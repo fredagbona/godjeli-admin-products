@@ -1,0 +1,27 @@
+{
+  "name": "admin-product",
+  "version": "1.0.0",
+  "description": "Backend de gestion de catalogue produits (Manual Core) avec scraping assisté et upload d'images.",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": ["scraping", "catalogue", "admin", "express"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "cloudinary": "^2.5.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.1",
+    "puppeteer": "^22.15.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
