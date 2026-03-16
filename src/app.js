@@ -1,9 +1,11 @@
 require('dotenv').config();
 const express = require('express');
+const mongoose = require('mongoose');
+const http = require('http');
 const { config, connectDB } = require('./config');
 const { pinAuth } = require('./middlewares/auth');
 const { errorHandler } = require('./middlewares/errorHandler');
-const { ok } = require('./middlewares/respond');
+const { ok, fail } = require('./middlewares/respond');
 const productController = require('./controllers/products');
 const adminController = require('./controllers/admin');
 
@@ -11,8 +13,35 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // Public — no auth required
-app.get('/health', (req, res) => {
-  return ok(res, { status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  const checks = {};
+
+  // MongoDB
+  const dbState = mongoose.connection.readyState;
+  checks.mongodb = dbState === 1 ? 'ok' : 'unreachable';
+
+  // Browserless
+  const wsEndpoint = process.env.BROWSER_WS_ENDPOINT;
+  if (wsEndpoint) {
+    try {
+      const url = new URL(wsEndpoint);
+      const httpUrl = `http://${url.hostname}:${url.port || 3000}/json/version`;
+      await new Promise((resolve, reject) => {
+        http.get(httpUrl, (r) => (r.statusCode === 200 ? resolve() : reject())).on('error', reject);
+      });
+      checks.browserless = 'ok';
+    } catch {
+      checks.browserless = 'unreachable';
+    }
+  } else {
+    checks.browserless = 'not_configured';
+  }
+
+  const allOk = Object.values(checks).every((v) => v === 'ok' || v === 'not_configured');
+  const status = allOk ? 200 : 503;
+  const payload = { status: allOk ? 'ok' : 'degraded', timestamp: new Date().toISOString(), checks };
+
+  return res.status(status).json({ success: allOk, data: payload });
 });
 
 // All routes below require a valid x-admin-pin header
