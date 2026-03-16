@@ -25,7 +25,7 @@ app.get('/health', async (req, res) => {
   if (wsEndpoint) {
     try {
       const url = new URL(wsEndpoint);
-      const httpUrl = `http://${url.hostname}:${url.port || 3000}/json/version`;
+      const httpUrl = `http://${url.hostname}:${url.port || 80}/pressure`;
       await new Promise((resolve, reject) => {
         http.get(httpUrl, (r) => (r.statusCode === 200 ? resolve() : reject())).on('error', reject);
       });
