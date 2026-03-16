@@ -3,6 +3,7 @@ const express = require('express');
 const { config, connectDB } = require('./config');
 const { pinAuth } = require('./middlewares/auth');
 const { errorHandler } = require('./middlewares/errorHandler');
+const { ok } = require('./middlewares/respond');
 const productController = require('./controllers/products');
 const adminController = require('./controllers/admin');
 
@@ -11,7 +12,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Public — no auth required
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  return ok(res, { status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // All routes below require a valid x-admin-pin header
@@ -19,7 +20,7 @@ app.use(pinAuth);
 
 // GET /api/admin/verify — lets the frontend check if the PIN is valid
 app.get('/api/admin/verify', (req, res) => {
-  res.json({ ok: true });
+  return ok(res, { verified: true });
 });
 
 // Admin helpers (scraping)

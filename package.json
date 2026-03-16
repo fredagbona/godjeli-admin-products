@@ -8,7 +8,12 @@
     "dev": "nodemon src/app.js",
     "seed": "node scripts/seed.js"
   },
-  "keywords": ["scraping", "catalogue", "admin", "express"],
+  "keywords": [
+    "scraping",
+    "catalogue",
+    "admin",
+    "express"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -19,6 +24,8 @@
     "express": "^4.19.2",
     "mongoose": "^8.5.1",
     "puppeteer": "^22.15.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {

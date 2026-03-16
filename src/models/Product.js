@@ -15,16 +15,24 @@ const productSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     slug: { type: String, unique: true },
 
-    // Financials
+    // Financials (EUR)
     price: { type: Number, required: true, min: 0 },
     sourcePrice: { type: Number, min: 0 },
     currency: { type: String, default: 'EUR' },
+
+    // Financials (FCFA)
+    priceFCFA: { type: Number, min: 0 },
+
+    // Logistics
+    weightKg: { type: Number, min: 0 },
+    logisticsCostEur: { type: Number, min: 0 },
+    logisticsCostFCFA: { type: Number, min: 0 },
 
     // Media & source
     mainImage: { type: String },
     gallery: [{ type: String }],
     sourceUrl: { type: String },
-    sourceSite: { type: String, enum: ['shein', 'aliexpress', 'other'] },
+    sourceSite: { type: String, enum: ['aliexpress', 'other'] },
 
     // Attributes & stock
     category: { type: String, index: true },
