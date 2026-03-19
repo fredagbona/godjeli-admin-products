@@ -26,8 +26,16 @@ function validateProductUrl(url) {
   }
 }
 
+// Normalize to international domain to avoid geo-redirects
+function normalizeAliUrl(url) {
+  const match = url.match(/\/item\/(\d+)\.html/);
+  if (match) return `https://www.aliexpress.com/item/${match[1]}.html`;
+  return url;
+}
+
 async function scrapeProduct(url) {
   validateProductUrl(url);
+  url = normalizeAliUrl(url);
 
   let browser;
   let isRemote = false;
@@ -49,8 +57,9 @@ async function scrapeProduct(url) {
     await page.setUserAgent(USER_AGENT);
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8' });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
-    await new Promise((r) => setTimeout(r, 4000));
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT });
+    // Wait for AliExpress to inject window.runParams (up to 10s)
+    await page.waitForFunction(() => window.runParams?.data, { timeout: 10000 }).catch(() => {});
 
     const pageTitle = await page.title();
     const pageUrl = page.url();
