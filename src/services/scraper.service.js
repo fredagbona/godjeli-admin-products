@@ -145,8 +145,10 @@ async function scrapeProduct(url) {
   validateProductUrl(url);
 
   let browser;
+  let isRemote = false;
   try {
     if (process.env.BROWSER_WS_ENDPOINT) {
+      isRemote = true;
       browser = await puppeteer.connect({ browserWSEndpoint: process.env.BROWSER_WS_ENDPOINT });
     } else {
       browser = await puppeteer.launch({
@@ -170,7 +172,10 @@ async function scrapeProduct(url) {
 
     return { ...data, sourceUrl: url, sourceSite: 'aliexpress' };
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      if (isRemote) browser.disconnect();
+      else await browser.close();
+    }
   }
 }
 
