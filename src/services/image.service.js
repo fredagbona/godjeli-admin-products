@@ -1,45 +1,41 @@
+const path = require('path');
 const { cloudinary } = require('../config');
 
-// Shown when an image can't be uploaded — keeps the UI from breaking
-const PLACEHOLDER_URL =
-  'https://res.cloudinary.com/demo/image/upload/v1/samples/ecommerce/accessories-bag.jpg';
+function uploadBuffer(file, folder = 'godjeli/admin') {
+  const baseName = path.parse(file.originalname || 'upload').name;
+  const publicId = `${Date.now()}-${baseName}`.replace(/[^a-zA-Z0-9-_]/g, '-');
 
-/**
- * Upload a remote image URL directly to Cloudinary (no local file).
- * Returns the hosted Cloudinary URL optimised as WebP at max 800px width.
- * Falls back to PLACEHOLDER_URL on any upload failure.
- *
- * @param {string} remoteUrl - Direct image URL from Shein / AliExpress
- * @returns {Promise<string>} - Cloudinary secure_url (or placeholder)
- */
-async function uploadProductImage(remoteUrl) {
-  try {
-    const result = await cloudinary.uploader.upload(remoteUrl, {
-      folder: 'godjeli/products',
-      transformation: [
-        { width: 800, crop: 'limit' },
-        { fetch_format: 'webp', quality: 'auto' },
-      ],
-    });
-    return result.secure_url;
-  } catch (err) {
-    console.error('Cloudinary upload failed:', err.message);
-    return PLACEHOLDER_URL;
-  }
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id: publicId,
+        resource_type: 'image',
+        transformation: [
+          { width: 1600, crop: 'limit' },
+          { fetch_format: 'webp', quality: 'auto' },
+        ],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        return resolve(result);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
 }
 
-/**
- * Upload an array of image URLs and return the hosted URLs.
- * Invalid URLs are skipped silently.
- *
- * @param {string[]} urls
- * @returns {Promise<string[]>}
- */
-async function uploadProductImages(urls) {
-  const results = await Promise.allSettled(urls.map(uploadProductImage));
-  return results
-    .filter((r) => r.status === 'fulfilled')
-    .map((r) => r.value);
+async function uploadAdminImages(files) {
+  const uploads = await Promise.all(files.map((file) => uploadBuffer(file)));
+
+  return uploads.map((upload) => ({
+    url: upload.secure_url,
+    publicId: upload.public_id,
+    width: upload.width,
+    height: upload.height,
+    format: upload.format,
+  }));
 }
 
-module.exports = { uploadProductImage, uploadProductImages };
+module.exports = { uploadAdminImages };

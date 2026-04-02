@@ -1,34 +1,47 @@
 /**
- * Seed script — verifies that a product can be saved to MongoDB with all fields.
+ * Seed script — creates one category and one product using the manual pricing flow.
  * Usage: node scripts/seed.js
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
+const Category = require('../src/models/Category');
 const Product = require('../src/models/Product');
+const { buildPricing, ORIGINS } = require('../src/services/pricing.service');
 
-const SAMPLE = {
-  title: 'Robe d\'été fleurie',
-  price: 29.99,
-  sourcePrice: 12.5,
-  currency: 'EUR',
-  mainImage: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
-  gallery: [],
-  sourceUrl: 'https://www.shein.com/sample-product.html',
-  sourceSite: 'shein',
-  category: 'Robes',
-  variants: ['S', 'M', 'L', 'XL'],
-  description: 'Robe légère à imprimé floral, idéale pour l\'été.',
-  isVisible: true,
+const SAMPLE_CATEGORY = {
+  name: 'Robes',
+  description: 'Selection de robes pour le catalogue GoDjeli.',
+  image: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
+};
+
+const SAMPLE_PRODUCT = {
+  name: 'Robe d ete fleurie',
+  description: 'Robe legere a imprime floral, ideale pour l ete.',
+  images: ['https://res.cloudinary.com/demo/image/upload/sample.jpg'],
+  costPriceEur: 10,
+  weightGrams: 200,
+  origin: ORIGINS.EUROPE,
 };
 
 async function seed() {
   await mongoose.connect(process.env.MONGODB_URI);
   console.log('Connected to MongoDB');
 
-  // Remove any previous seed entry by title to stay idempotent
-  await Product.deleteOne({ title: SAMPLE.title });
+  await Product.deleteOne({ name: SAMPLE_PRODUCT.name });
+  await Category.deleteOne({ name: SAMPLE_CATEGORY.name });
 
-  const product = await Product.create(SAMPLE);
+  const category = await Category.create(SAMPLE_CATEGORY);
+  const product = await Product.create({
+    name: SAMPLE_PRODUCT.name,
+    description: SAMPLE_PRODUCT.description,
+    images: SAMPLE_PRODUCT.images,
+    categoryId: category._id,
+    pricing: buildPricing({
+      costPriceEur: SAMPLE_PRODUCT.costPriceEur,
+      weightGrams: SAMPLE_PRODUCT.weightGrams,
+      origin: SAMPLE_PRODUCT.origin,
+    }),
+  });
 
   console.log('Seed product created:');
   console.log(JSON.stringify(product.toObject(), null, 2));

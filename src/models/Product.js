@@ -1,60 +1,71 @@
 const mongoose = require('mongoose');
+const { ORIGINS } = require('../services/pricing.service');
+const { slugify } = require('../utils/slugify');
 
-function toSlug(str) {
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+const pricingSchema = new mongoose.Schema(
+  {
+    costPriceEur: { type: Number, required: true, min: 0 },
+    weightGrams: { type: Number, required: true, min: 0 },
+    origin: { type: String, required: true, enum: Object.values(ORIGINS) },
+    ratePerKgEur: { type: Number, required: true, min: 0 },
+    logisticsCostEur: { type: Number, required: true, min: 0 },
+    customsFeeEur: { type: Number, required: true, min: 0 },
+    paymentFeeEur: { type: Number, required: true, min: 0 },
+    marginAmountEur: { type: Number, required: true, min: 0 },
+    netMarginEur: { type: Number, required: true },
+    displayProductPriceEur: { type: Number, required: true, min: 0 },
+    displayShippingAndCustomsBaseEur: { type: Number, required: true, min: 0 },
+    displayAdjustmentEur: { type: Number, required: true },
+    displayShippingAndCustomsEur: { type: Number, required: true, min: 0 },
+    totalPriceEur: { type: Number, required: true, min: 0 },
+    totalRealCostEur: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
 
 const productSchema = new mongoose.Schema(
   {
-    // Identifiers
-    title: { type: String, required: true, trim: true },
-    slug: { type: String, unique: true },
-
-    // Financials (EUR)
-    price: { type: Number, required: true, min: 0 },
-    sourcePrice: { type: Number, min: 0 },
-    currency: { type: String, default: 'EUR' },
-
-    // Financials (FCFA)
-    priceFCFA: { type: Number, min: 0 },
-
-    // Logistics
-    weightKg: { type: Number, min: 0 },
-    logisticsCostEur: { type: Number, min: 0 },
-    logisticsCostFCFA: { type: Number, min: 0 },
-
-    // Media & source
-    mainImage: { type: String },
-    gallery: [{ type: String }],
-    sourceUrl: { type: String },
-    sourceSite: { type: String, enum: ['aliexpress', 'other'] },
-
-    // Attributes & stock
-    category: { type: String, index: true },
-    variants: [{ type: String }],
-    description: { type: String },
-
-    // Meta
-    isVisible: { type: Boolean, default: true },
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, unique: true, index: true },
+    description: { type: String, required: true, trim: true },
+    images: {
+      type: [{ type: String }],
+      validate: {
+        validator: (images) => Array.isArray(images) && images.length > 0,
+        message: 'Au moins une image est requise.',
+      },
+      required: true,
+    },
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      required: true,
+      index: true,
+    },
+    pricing: { type: pricingSchema, required: true },
+    isActive: { type: Boolean, default: true, index: true },
+    deletedAt: { type: Date, default: null, index: true },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-// Auto-generate slug from title before saving
-productSchema.pre('save', async function () {
-  if (!this.isModified('title') && this.slug) return;
+productSchema.virtual('price').get(function getPrice() {
+  return this.pricing?.totalPriceEur ?? null;
+});
 
-  const base = toSlug(this.title);
+productSchema.pre('save', async function preSave() {
+  if (!this.isModified('name') && this.slug) return;
+
+  const base = slugify(this.name);
   let slug = base;
   let attempt = 0;
 
   while (true) {
-    const conflict = await mongoose.model('Product').findOne({ slug, _id: { $ne: this._id } });
+    const conflict = await mongoose.model('Product').findOne({
+      slug,
+      _id: { $ne: this._id },
+    });
+
     if (!conflict) break;
     attempt += 1;
     slug = `${base}-${attempt}`;
@@ -63,7 +74,6 @@ productSchema.pre('save', async function () {
   this.slug = slug;
 });
 
-// Text index for fast client-side search
-productSchema.index({ title: 'text', category: 'text' });
+productSchema.index({ name: 'text', description: 'text' });
 
 module.exports = mongoose.model('Product', productSchema);
