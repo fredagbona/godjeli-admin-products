@@ -42,6 +42,29 @@ const productSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    supplierId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Supplier',
+      required: true,
+      index: true,
+    },
+    productStock: { type: Number, required: true, min: 0, default: 0 },
+    productUrl: { type: String, required: true },
+    socialProof: {
+      type: {
+        stars: { type: Number, default: 0, min: 0, max: 5 },
+        reviews: { type: Number, default: 0, min: 0 },
+        salesCount: { type: Number, default: 0, min: 0 },
+      },
+      default: {},
+    },
+    variants: {
+      type: {
+        size: [{ type: String }],
+        color: [{ type: String }],
+      },
+      default: {},
+    },
     pricing: { type: pricingSchema, required: true },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },

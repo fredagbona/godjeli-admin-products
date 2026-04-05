@@ -7,6 +7,7 @@ const { errorHandler } = require('./middlewares/errorHandler');
 const { ok } = require('./middlewares/respond');
 const productController = require('./controllers/products');
 const categoryController = require('./controllers/categories');
+const supplierController = require('./controllers/suppliers');
 const uploadController = require('./controllers/uploads');
 
 const app = express();
@@ -48,6 +49,11 @@ app.get('/api/admin/categories', categoryController.listCategories);
 app.post('/api/admin/categories', categoryController.createCategory);
 app.patch('/api/admin/categories/:id', categoryController.updateCategory);
 app.delete('/api/admin/categories/:id', categoryController.deleteCategory);
+
+app.get('/api/admin/suppliers', supplierController.listSuppliers);
+app.post('/api/admin/suppliers', supplierController.createSupplier);
+app.patch('/api/admin/suppliers/:id', supplierController.updateSupplier);
+app.delete('/api/admin/suppliers/:id', supplierController.deleteSupplier);
 
 app.get('/api/admin/products', productController.listProducts);
 app.get('/api/admin/products/:id', productController.getProduct);

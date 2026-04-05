@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Supplier = require('../models/Supplier');
 const { buildPricing, ORIGINS } = require('../services/pricing.service');
 const { ok, created, notFound, badRequest, fail } = require('../middlewares/respond');
 
@@ -10,7 +11,19 @@ const productSchema = z.object({
   name: z.string().trim().min(1),
   description: z.string().trim().min(1),
   categoryId: objectIdSchema,
+  supplierId: objectIdSchema,
   images: z.array(z.string().url()).min(1),
+  productStock: z.number().int().min(0),
+  productUrl: z.string().url(),
+  socialProof: z.object({
+    stars: z.number().min(0).max(5).optional().default(0),
+    reviews: z.number().int().min(0).optional().default(0),
+    salesCount: z.number().int().min(0).optional().default(0),
+  }).optional().default({}),
+  variants: z.object({
+    size: z.array(z.string()).optional().default([]),
+    color: z.array(z.string()).optional().default([]),
+  }).optional().default({}),
   costPriceEur: z.number().min(0),
   weightGrams: z.number().min(0),
   origin: z.nativeEnum(ORIGINS),
@@ -40,12 +53,33 @@ async function ensureActiveCategory(categoryId) {
   return category;
 }
 
+async function ensureActiveSupplier(supplierId) {
+  const supplier = await Supplier.findOne({
+    _id: supplierId,
+    deletedAt: null,
+    isActive: true,
+  });
+
+  if (!supplier) {
+    const error = new Error('Le fournisseur est introuvable ou inactif.');
+    error.status = 400;
+    throw error;
+  }
+
+  return supplier;
+}
+
 function buildProductPayload(data) {
   return {
     name: data.name,
     description: data.description,
     categoryId: data.categoryId,
+    supplierId: data.supplierId,
     images: data.images,
+    productStock: data.productStock,
+    productUrl: data.productUrl,
+    socialProof: data.socialProof,
+    variants: data.variants,
     isActive: data.isActive ?? true,
     pricing: buildPricing({
       costPriceEur: data.costPriceEur,
@@ -66,6 +100,7 @@ async function listProducts(req, res, next) {
 
     const products = await Product.find(filter)
       .populate('categoryId')
+      .populate('supplierId')
       .sort({ createdAt: -1 });
 
     return ok(res, products);
@@ -84,7 +119,9 @@ async function getProduct(req, res, next) {
     const product = await Product.findOne({
       ...selector,
       deletedAt: null,
-    }).populate('categoryId');
+    })
+      .populate('categoryId')
+      .populate('supplierId');
 
     if (!product) return notFound(res, 'Product not found');
     return ok(res, product);
@@ -97,9 +134,11 @@ async function createProduct(req, res, next) {
   try {
     const data = productSchema.parse(req.body);
     await ensureActiveCategory(data.categoryId);
+    await ensureActiveSupplier(data.supplierId);
 
     const product = await Product.create(buildProductPayload(data));
     await product.populate('categoryId');
+    await product.populate('supplierId');
 
     return created(res, product);
   } catch (error) {
@@ -121,6 +160,9 @@ async function updateProduct(req, res, next) {
     const nextCategoryId = data.categoryId || String(product.categoryId);
     await ensureActiveCategory(nextCategoryId);
 
+    const nextSupplierId = data.supplierId || String(product.supplierId);
+    await ensureActiveSupplier(nextSupplierId);
+
     const pricingInput = {
       costPriceEur: data.costPriceEur ?? product.pricing.costPriceEur,
       weightGrams: data.weightGrams ?? product.pricing.weightGrams,
@@ -131,12 +173,18 @@ async function updateProduct(req, res, next) {
     if (data.description !== undefined) product.description = data.description;
     if (data.images !== undefined) product.images = data.images;
     if (data.categoryId !== undefined) product.categoryId = data.categoryId;
+    if (data.supplierId !== undefined) product.supplierId = data.supplierId;
+    if (data.productStock !== undefined) product.productStock = data.productStock;
+    if (data.productUrl !== undefined) product.productUrl = data.productUrl;
+    if (data.socialProof !== undefined) product.socialProof = data.socialProof;
+    if (data.variants !== undefined) product.variants = data.variants;
     if (data.isActive !== undefined) product.isActive = data.isActive;
 
     product.pricing = buildPricing(pricingInput);
 
     await product.save();
     await product.populate('categoryId');
+    await product.populate('supplierId');
 
     return ok(res, product);
   } catch (error) {

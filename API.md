@@ -140,6 +140,65 @@ Meme body que create, tous les champs optionnels.
 
 Suppression logique: `isActive` passe a `false` et `deletedAt` est defini.
 
+## Fournisseurs (Suppliers)
+
+### `GET /api/admin/suppliers`
+
+Query:
+- `search`
+- `type` — `DIRECT`, `MARKETPLACE`, `GROSSISTE`, `RETAIL`, `AGENT`
+- `country`
+- `isActive=true|false`
+
+Retour:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "69d2956cefa817804bb8b838",
+      "name": "Fashion Wholesale Paris",
+      "slug": "fashion-wholesale-paris",
+      "type": "GROSSISTE",
+      "country": "France",
+      "deliveryDelay": "5-7 jours",
+      "rating": 4,
+      "isActive": true,
+      "deletedAt": null,
+      "createdAt": "2026-04-05T17:01:32.558Z",
+      "updatedAt": "2026-04-05T17:01:32.558Z",
+      "__v": 0
+    }
+  ]
+}
+```
+
+### `POST /api/admin/suppliers`
+
+```json
+{
+  "name": "Fashion Wholesale Paris",
+  "type": "GROSSISTE",
+  "country": "France",
+  "deliveryDelay": "5-7 jours",
+  "rating": 4
+}
+```
+
+**Notes:**
+- `type` doit etre `"DIRECT"`, `"MARKETPLACE"`, `"GROSSISTE"`, `"RETAIL"` ou `"AGENT"` (majuscules)
+- `rating` est un entier de 1 a 5 (optionnel)
+- `deliveryDelay` est un string libre (ex: `"5-7 jours"`, `"2-3 semaines"`)
+
+### `PATCH /api/admin/suppliers/:id`
+
+Meme body que create, tous les champs optionnels.
+
+### `DELETE /api/admin/suppliers/:id`
+
+Suppression logique: `isActive` passe a `false` et `deletedAt` est defini.
+
 ## Produits
 
 ### `GET /api/admin/products`
@@ -149,13 +208,13 @@ Query:
 - `categoryId`
 - `isActive=true|false`
 
-Retour: liste de produits avec `categoryId` peuple (objet categorie complet).
+Retour: liste de produits avec `categoryId` et `supplierId` peuples (objets complets).
 
 ### `GET /api/admin/products/:id`
 
 Accepte un ObjectId Mongo ou un slug produit.
 
-Retour: produit unique avec `categoryId` peuple et `price` (alias de `totalPriceEur`).
+Retour: produit unique avec `categoryId` et `supplierId` peuples, `price` (alias de `totalPriceEur`).
 
 ### `POST /api/admin/products`
 
@@ -164,9 +223,21 @@ Retour: produit unique avec `categoryId` peuple et `price` (alias de `totalPrice
   "name": "Robe ete fleurie",
   "description": "Robe legere a imprime floral",
   "categoryId": "6612f3c9e6a5d8e44bb9a001",
+  "supplierId": "69d2956cefa817804bb8b838",
   "images": [
     "https://res.cloudinary.com/..."
   ],
+  "productStock": 50,
+  "productUrl": "https://fournisseur.com/product/123",
+  "socialProof": {
+    "stars": 4.5,
+    "reviews": 120,
+    "salesCount": 450
+  },
+  "variants": {
+    "size": ["S", "M", "L", "XL"],
+    "color": ["Rouge", "Bleu", "Blanc"]
+  },
   "costPriceEur": 10,
   "weightGrams": 200,
   "origin": "EUROPE",
@@ -175,6 +246,11 @@ Retour: produit unique avec `categoryId` peuple et `price` (alias de `totalPrice
 ```
 
 **Notes:**
+- `supplierId` doit pointer vers un fournisseur existant et actif
+- `productStock` est un entier >= 0 (stock actuel chez le fournisseur)
+- `productUrl` est l'URL du produit chez le fournisseur
+- `socialProof` est optionnel (default: `{ stars: 0, reviews: 0, salesCount: 0 }`)
+- `variants` est optionnel (default: `{ size: [], color: [] }`)
 - `origin` doit etre `"EUROPE"` ou `"CHINA"` (majuscules obligatoires)
 - `costPriceEur` doit etre `>= 5`
 - `images` doit contenir au moins 1 URL
@@ -185,6 +261,7 @@ Retour: produit unique avec `categoryId` peuple et `price` (alias de `totalPrice
 
 Meme structure que create, tous les champs optionnels.
 Le backend recalcule toujours `pricing` a partir des valeurs finales.
+Si `supplierId` est change, le nouveau fournisseur est valide.
 
 ### `DELETE /api/admin/products/:id`
 
@@ -196,22 +273,47 @@ Exemple de retour:
 
 ```json
 {
-  "_id": "69d252c97d4e0e1136ef959c",
-  "name": "Robe ete fleurie",
+  "_id": "69d29589efa817804bb8b840",
+  "name": "Robe Ete Fleurie",
   "slug": "robe-ete-fleurie",
   "description": "Robe legere a imprime floral",
-  "images": ["https://res.cloudinary.com/..."],
+  "images": ["https://example.com/image.jpg"],
   "categoryId": {
-    "_id": "6612f3c9e6a5d8e44bb9a001",
-    "name": "Robes",
-    "slug": "robes",
-    "description": "Selection femme",
+    "_id": "69d2529b7d4e0e1136ef9595",
+    "name": "Test Category",
+    "slug": "test-category",
+    "description": "A test category for API testing",
     "image": null,
     "isActive": true,
     "deletedAt": null,
     "createdAt": "...",
     "updatedAt": "...",
     "__v": 0
+  },
+  "supplierId": {
+    "_id": "69d2956cefa817804bb8b838",
+    "name": "Fashion Wholesale Paris",
+    "slug": "fashion-wholesale-paris",
+    "type": "GROSSISTE",
+    "country": "France",
+    "deliveryDelay": "5-7 jours",
+    "rating": 4,
+    "isActive": true,
+    "deletedAt": null,
+    "createdAt": "...",
+    "updatedAt": "...",
+    "__v": 0
+  },
+  "productStock": 50,
+  "productUrl": "https://example.com/product/robe-ete",
+  "socialProof": {
+    "stars": 4.5,
+    "reviews": 120,
+    "salesCount": 450
+  },
+  "variants": {
+    "size": ["S", "M", "L"],
+    "color": ["Rouge", "Bleu"]
   },
   "pricing": {
     "costPriceEur": 10,
@@ -232,19 +334,24 @@ Exemple de retour:
   },
   "isActive": true,
   "deletedAt": null,
-  "createdAt": "2026-04-05T12:17:13.171Z",
-  "updatedAt": "2026-04-05T12:17:13.171Z",
+  "createdAt": "2026-04-05T17:02:01.193Z",
+  "updatedAt": "2026-04-05T17:02:01.193Z",
   "slug": "robe-ete-fleurie",
   "__v": 0,
   "price": 17.57,
-  "id": "69d252c97d4e0e1136ef959c"
+  "id": "69d29589efa817804bb8b840"
 }
 ```
 
 **Champs notables:**
-- `price` — alias virtuel de `totalPriceEur` (prix total affiché au client)
+- `price` — alias virtuel de `totalPriceEur` (prix total affiche au client)
 - `id` — alias de `_id` (string)
 - `categoryId` — objet categorie complet peuple automatiquement
+- `supplierId` — objet fournisseur complet peuple automatiquement
+- `productStock` — stock actuel chez le fournisseur
+- `productUrl` — URL du produit chez le fournisseur
+- `socialProof` — `{ stars, reviews, salesCount }`
+- `variants` — `{ size[], color[] }`
 
 ## Pricing
 

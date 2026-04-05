@@ -5,7 +5,10 @@
       "Bash(npm run *)",
       "Bash(sleep *)",
       "Bash(curl *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(python3 *)",
+      "Bash(pkill *)",
+      "Bash(npm test *)"
     ]
   },
   "$version": 3
