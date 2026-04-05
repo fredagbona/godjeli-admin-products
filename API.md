@@ -1,6 +1,6 @@
 # Godjeli Admin Core — API Integration Guide
 
-Base URL locale: `http://localhost:3000`
+Base URL: `http://localhost:3000`
 
 ## Conventions
 
@@ -14,6 +14,23 @@ Base URL locale: `http://localhost:3000`
 
 ```json
 { "success": false, "error": { "code": "CODE", "message": "..." } }
+```
+
+## Health
+
+### `GET /health`
+
+Retour:
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "ok",
+    "timestamp": "2026-04-05T12:14:53.190Z",
+    "checks": { "mongodb": "ok" }
+  }
+}
 ```
 
 ## Verification admin
@@ -62,6 +79,28 @@ Query:
 - `search`
 - `isActive=true|false`
 
+Retour:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "69d2529b7d4e0e1136ef9595",
+      "name": "Test Category",
+      "slug": "test-category",
+      "description": "A test category for API testing",
+      "image": null,
+      "isActive": true,
+      "deletedAt": null,
+      "createdAt": "2026-04-05T12:16:27.297Z",
+      "updatedAt": "2026-04-05T12:16:27.297Z",
+      "__v": 0
+    }
+  ]
+}
+```
+
 ### `POST /api/admin/categories`
 
 ```json
@@ -73,13 +112,33 @@ Query:
 }
 ```
 
+Retour:
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "69d2529b7d4e0e1136ef9595",
+    "name": "Robes",
+    "slug": "robes",
+    "description": "Selection femme",
+    "image": null,
+    "isActive": true,
+    "deletedAt": null,
+    "createdAt": "2026-04-05T12:16:27.297Z",
+    "updatedAt": "2026-04-05T12:16:27.297Z",
+    "__v": 0
+  }
+}
+```
+
 ### `PATCH /api/admin/categories/:id`
 
 Meme body que create, tous les champs optionnels.
 
 ### `DELETE /api/admin/categories/:id`
 
-Suppression logique: la categorie est desactivee puis marquee supprimee.
+Suppression logique: `isActive` passe a `false` et `deletedAt` est defini.
 
 ## Produits
 
@@ -90,9 +149,13 @@ Query:
 - `categoryId`
 - `isActive=true|false`
 
+Retour: liste de produits avec `categoryId` peuple (objet categorie complet).
+
 ### `GET /api/admin/products/:id`
 
 Accepte un ObjectId Mongo ou un slug produit.
+
+Retour: produit unique avec `categoryId` peuple et `price` (alias de `totalPriceEur`).
 
 ### `POST /api/admin/products`
 
@@ -111,6 +174,13 @@ Accepte un ObjectId Mongo ou un slug produit.
 }
 ```
 
+**Notes:**
+- `origin` doit etre `"EUROPE"` ou `"CHINA"` (majuscules obligatoires)
+- `costPriceEur` doit etre `>= 5`
+- `images` doit contenir au moins 1 URL
+- `categoryId` doit pointer vers une categorie existante et active
+- le backend calcule automatiquement tout l'objet `pricing`
+
 ### `PATCH /api/admin/products/:id`
 
 Meme structure que create, tous les champs optionnels.
@@ -118,7 +188,7 @@ Le backend recalcule toujours `pricing` a partir des valeurs finales.
 
 ### `DELETE /api/admin/products/:id`
 
-Suppression logique: le produit est desactive puis marque supprime.
+Suppression logique: `isActive` passe a `false` et `deletedAt` est defini.
 
 ## Structure produit
 
@@ -126,7 +196,7 @@ Exemple de retour:
 
 ```json
 {
-  "_id": "6612f3c9e6a5d8e44bb9a099",
+  "_id": "69d252c97d4e0e1136ef959c",
   "name": "Robe ete fleurie",
   "slug": "robe-ete-fleurie",
   "description": "Robe legere a imprime floral",
@@ -134,7 +204,14 @@ Exemple de retour:
   "categoryId": {
     "_id": "6612f3c9e6a5d8e44bb9a001",
     "name": "Robes",
-    "slug": "robes"
+    "slug": "robes",
+    "description": "Selection femme",
+    "image": null,
+    "isActive": true,
+    "deletedAt": null,
+    "createdAt": "...",
+    "updatedAt": "...",
+    "__v": 0
   },
   "pricing": {
     "costPriceEur": 10,
@@ -153,9 +230,21 @@ Exemple de retour:
     "totalPriceEur": 17.57,
     "totalRealCostEur": 14.06
   },
-  "isActive": true
+  "isActive": true,
+  "deletedAt": null,
+  "createdAt": "2026-04-05T12:17:13.171Z",
+  "updatedAt": "2026-04-05T12:17:13.171Z",
+  "slug": "robe-ete-fleurie",
+  "__v": 0,
+  "price": 17.57,
+  "id": "69d252c97d4e0e1136ef959c"
 }
 ```
+
+**Champs notables:**
+- `price` — alias virtuel de `totalPriceEur` (prix total affiché au client)
+- `id` — alias de `_id` (string)
+- `categoryId` — objet categorie complet peuple automatiquement
 
 ## Pricing
 
