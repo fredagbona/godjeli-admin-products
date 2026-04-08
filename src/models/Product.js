@@ -68,6 +68,7 @@ const productSchema = new mongoose.Schema(
     pricing: { type: pricingSchema, required: true },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },
+    migratedAt: { type: Date, default: null },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

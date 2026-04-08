@@ -8,6 +8,7 @@ const { ok } = require('./middlewares/respond');
 const productController = require('./controllers/products');
 const categoryController = require('./controllers/categories');
 const supplierController = require('./controllers/suppliers');
+const migrationController = require('./controllers/migration');
 const uploadController = require('./controllers/uploads');
 
 const app = express();
@@ -54,6 +55,8 @@ app.get('/api/admin/suppliers', supplierController.listSuppliers);
 app.post('/api/admin/suppliers', supplierController.createSupplier);
 app.patch('/api/admin/suppliers/:id', supplierController.updateSupplier);
 app.delete('/api/admin/suppliers/:id', supplierController.deleteSupplier);
+
+app.post('/api/admin/migration/sync', migrationController.syncMigration);
 
 app.get('/api/admin/products', productController.listProducts);
 app.get('/api/admin/products/:id', productController.getProduct);

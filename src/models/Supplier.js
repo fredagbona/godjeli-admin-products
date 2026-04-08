@@ -13,6 +13,7 @@ const supplierSchema = new mongoose.Schema(
     rating: { type: Number, min: 1, max: 5 },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },
+    migratedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
