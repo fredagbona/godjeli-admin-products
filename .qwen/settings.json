@@ -9,7 +9,9 @@
       "Bash(python3 *)",
       "Bash(pkill *)",
       "Bash(npm test *)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(do *)",
+      "Bash(done)"
     ]
   },
   "$version": 3

@@ -353,6 +353,70 @@ Exemple de retour:
 - `socialProof` — `{ stars, reviews, salesCount }`
 - `variants` — `{ size[], color[] }`
 
+## Migration
+
+Synchronise les donnees du catalogue (categories, fournisseurs, produits, variantes) depuis MongoDB vers la base PostgreSQL du client backend.
+
+### `POST /api/admin/migration/sync`
+
+La migration est **idempotente** : un document deja migre n'est pas re-insere sauf si son `updatedAt` est plus recent que son `migratedAt`.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `dryRun` | `true\|false` | Si `true`, retourne le compteur de ce qui serait migre sans ecrire en PostgreSQL |
+
+### Dry run (preview)
+
+```
+POST /api/admin/migration/sync?dryRun=true
+```
+
+Retour:
+
+```json
+{
+  "success": true,
+  "data": {
+    "dryRun": true,
+    "categories": 6,
+    "suppliers": 2,
+    "products": 50,
+    "totalVariants": 608
+  }
+}
+```
+
+### Sync reelle
+
+```
+POST /api/admin/migration/sync
+```
+
+Retour:
+
+```json
+{
+  "success": true,
+  "data": {
+    "dryRun": false,
+    "categories": { "upserted": 6 },
+    "suppliers": { "upserted": 2 },
+    "products": { "upserted": 50 },
+    "variants": { "upserted": 608 }
+  }
+}
+```
+
+**Notes:**
+- Necessite `DATABASE_URL` configure dans l'environnement
+- Toute la synchronisation s'execute dans une transaction PostgreSQL (rollback en cas d'erreur)
+- Les categories et fournisseurs dont le produit depend sont migres automatiquement si necessaire
+- Les variantes existantes du produit sont supprimees puis re-inserees pour garantir la coherence
+- Le champ `migratedAt` est defini sur chaque document MongoDB apres succes
+- Retourne `DB_UNAVAILABLE` (503) si PostgreSQL n'est pas joignable
+
 ## Pricing
 
 Constantes:

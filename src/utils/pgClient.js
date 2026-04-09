@@ -10,9 +10,21 @@ function getPool() {
       error.status = 500;
       throw error;
     }
+    // SSL is controlled by DATABASE_SSL env var:
+    //   "true"    → { rejectUnauthorized: false }
+    //   "false"   → false (no SSL)
+    //   omitted   → auto: true in production, false otherwise
+    let sslOption;
+    if (process.env.DATABASE_SSL === 'true') {
+      sslOption = { rejectUnauthorized: false };
+    } else if (process.env.DATABASE_SSL === 'false') {
+      sslOption = false;
+    } else {
+      sslOption = process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false;
+    }
     pool = new Pool({
       connectionString: databaseUrl,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: sslOption,
     });
   }
   return pool;

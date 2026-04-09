@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { getPool } = require('../utils/pgClient');
 const Category = require('../models/Category');
 const Supplier = require('../models/Supplier');
@@ -28,11 +29,12 @@ function pendingQuery(Model) {
  * Returns the PostgreSQL id (existing or new).
  */
 async function upsertCategory(pool, cat) {
+  const id = crypto.randomUUID();
   const sql = `
     INSERT INTO "Category" (
-      "sourceId", "slug", "name", "description", "image", "isActive",
+      "id", "sourceId", "slug", "name", "description", "image", "isActive",
       "createdAt", "updatedAt"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT ("sourceId") DO UPDATE SET
       "slug" = EXCLUDED."slug",
       "name" = EXCLUDED."name",
@@ -43,6 +45,7 @@ async function upsertCategory(pool, cat) {
     RETURNING id
   `;
   const result = await pool.query(sql, [
+    id,
     String(cat._id),
     cat.slug,
     cat.name,
@@ -59,11 +62,12 @@ async function upsertCategory(pool, cat) {
  * Upsert a supplier into PostgreSQL.
  */
 async function upsertSupplier(pool, sup) {
+  const id = crypto.randomUUID();
   const sql = `
     INSERT INTO "Supplier" (
-      "sourceId", "slug", "name", "type", "country", "deliveryDelay",
+      "id", "sourceId", "slug", "name", "type", "country", "deliveryDelay",
       "rating", "isActive", "createdAt", "updatedAt"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     ON CONFLICT ("sourceId") DO UPDATE SET
       "slug" = EXCLUDED."slug",
       "name" = EXCLUDED."name",
@@ -76,6 +80,7 @@ async function upsertSupplier(pool, sup) {
     RETURNING id
   `;
   const result = await pool.query(sql, [
+    id,
     String(sup._id),
     sup.slug,
     sup.name,
@@ -94,9 +99,10 @@ async function upsertSupplier(pool, sup) {
  * Upsert a product into PostgreSQL.
  */
 async function upsertProduct(pool, product, pgCategoryId, pgSupplierId) {
+  const id = crypto.randomUUID();
   const sql = `
     INSERT INTO "Product" (
-      "sourceId", "slug", "name", "description", "images", "productUrl",
+      "id", "sourceId", "slug", "name", "description", "images", "productUrl",
       "productStock", "isActive",
       "socialProofStars", "socialProofReviews", "socialProofSalesCount",
       "categoryId", "supplierId",
@@ -108,7 +114,7 @@ async function upsertProduct(pool, product, pgCategoryId, pgSupplierId) {
       "createdAt", "updatedAt"
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
     )
     ON CONFLICT ("sourceId") DO UPDATE SET
       "slug" = EXCLUDED."slug",
@@ -141,8 +147,8 @@ async function upsertProduct(pool, product, pgCategoryId, pgSupplierId) {
   `;
   const p = product.pricing || {};
   const sp = product.socialProof || {};
-  const v = product.variants || {};
   const result = await pool.query(sql, [
+    id,
     String(product._id),
     product.slug,
     product.name,
@@ -176,10 +182,9 @@ async function upsertProduct(pool, product, pgCategoryId, pgSupplierId) {
 }
 
 /**
- * Sync variants: delete existing ones for this product sourceId, then bulk insert.
+ * Sync variants: delete existing ones for this product, then bulk insert.
  */
 async function syncVariants(pool, pgProductId, product) {
-  // Delete existing
   await pool.query(
     'DELETE FROM "ProductVariant" WHERE "productId" = $1',
     [pgProductId]
@@ -189,30 +194,28 @@ async function syncVariants(pool, pgProductId, product) {
   const sizes = product.variants?.size || [];
   const colors = product.variants?.color || [];
 
-  // Create cartesian product of sizes x colors, plus standalone sizes/colors
   const seen = new Set();
   for (const size of sizes) {
     for (const color of colors) {
       const key = `${size}|${color}`;
       if (!seen.has(key)) {
         seen.add(key);
-        variants.push([pgProductId, size, color]);
+        variants.push([crypto.randomUUID(), pgProductId, size, color]);
       }
     }
   }
-  // Also add size-only and color-only entries
   for (const size of sizes) {
     const key = `${size}|`;
     if (!seen.has(key)) {
       seen.add(key);
-      variants.push([pgProductId, size, null]);
+      variants.push([crypto.randomUUID(), pgProductId, size, null]);
     }
   }
   for (const color of colors) {
     const key = `|${color}`;
     if (!seen.has(key)) {
       seen.add(key);
-      variants.push([pgProductId, null, color]);
+      variants.push([crypto.randomUUID(), pgProductId, null, color]);
     }
   }
 
@@ -220,13 +223,13 @@ async function syncVariants(pool, pgProductId, product) {
 
   const values = variants
     .map((_, i) => {
-      const base = i * 3 + 1;
-      return `($${base}, $${base + 1}, $${base + 2})`;
+      const base = i * 4 + 1;
+      return `($${base}, $${base + 1}, $${base + 2}, $${base + 3})`;
     })
     .join(', ');
 
   const flatParams = variants.flat();
-  const sql = `INSERT INTO "ProductVariant" ("productId", "size", "color") VALUES ${values}`;
+  const sql = `INSERT INTO "ProductVariant" ("id", "productId", "size", "color") VALUES ${values}`;
   await pool.query(sql, flatParams);
 
   return variants.length;
@@ -264,7 +267,7 @@ async function syncMigration(req, res, next) {
     for (const cat of categories) {
       const pgId = await upsertCategory(pool, cat);
       categoryMap[String(cat._id)] = pgId;
-      await Category.updateOne({ _id: cat._id }, { migratedAt: new Date() });
+      await Category.updateOne({ _id: cat._id }, { migratedAt: cat.updatedAt });
       categoryUpserts++;
     }
 
@@ -274,7 +277,7 @@ async function syncMigration(req, res, next) {
     for (const sup of suppliers) {
       const pgId = await upsertSupplier(pool, sup);
       supplierMap[String(sup._id)] = pgId;
-      await Supplier.updateOne({ _id: sup._id }, { migratedAt: new Date() });
+      await Supplier.updateOne({ _id: sup._id }, { migratedAt: sup.updatedAt });
       supplierUpserts++;
     }
 
@@ -282,8 +285,14 @@ async function syncMigration(req, res, next) {
     let totalVariants = 0;
 
     for (const product of products) {
-      const catId = String(product.categoryId);
-      const supId = String(product.supplierId);
+      const catId = product.categoryId ? String(product.categoryId) : null;
+      const supId = product.supplierId ? String(product.supplierId) : null;
+
+      if (!catId || !supId) {
+        // Skip products with missing references (created before supplierId was added)
+        await Product.updateOne({ _id: product._id }, { migratedAt: product.updatedAt });
+        continue;
+      }
 
       // Category/supplier may have been migrated earlier; look up or upsert on the fly
       let pgCategoryId = categoryMap[catId];
@@ -294,7 +303,7 @@ async function syncMigration(req, res, next) {
         if (existingCat) {
           pgCategoryId = await upsertCategory(pool, existingCat);
           categoryMap[catId] = pgCategoryId;
-          await Category.updateOne({ _id: catId }, { migratedAt: new Date() });
+          await Category.updateOne({ _id: catId }, { migratedAt: existingCat.updatedAt });
         }
       }
       if (!pgCategoryId) {
@@ -306,7 +315,7 @@ async function syncMigration(req, res, next) {
         if (existingSup) {
           pgSupplierId = await upsertSupplier(pool, existingSup);
           supplierMap[supId] = pgSupplierId;
-          await Supplier.updateOne({ _id: supId }, { migratedAt: new Date() });
+          await Supplier.updateOne({ _id: supId }, { migratedAt: existingSup.updatedAt });
         }
       }
       if (!pgSupplierId) {
@@ -316,7 +325,7 @@ async function syncMigration(req, res, next) {
       const pgProductId = await upsertProduct(pool, product, pgCategoryId, pgSupplierId);
       const variantCount = await syncVariants(pool, pgProductId, product);
 
-      await Product.updateOne({ _id: product._id }, { migratedAt: new Date() });
+      await Product.updateOne({ _id: product._id }, { migratedAt: product.updatedAt });
       productUpserts++;
       totalVariants += variantCount;
     }
