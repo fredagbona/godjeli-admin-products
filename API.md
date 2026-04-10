@@ -380,10 +380,10 @@ Retour:
   "success": true,
   "data": {
     "dryRun": true,
-    "categories": 6,
-    "suppliers": 2,
-    "products": 50,
-    "totalVariants": 608
+    "categories": { "total": 6, "pending": 0, "synced": 6 },
+    "suppliers": { "total": 2, "pending": 0, "synced": 2 },
+    "products": { "total": 50, "pending": 0, "synced": 50, "skippedMissingRefs": 0 },
+    "totalVariants": 0
   }
 }
 ```
@@ -401,13 +401,24 @@ Retour:
   "success": true,
   "data": {
     "dryRun": false,
-    "categories": { "upserted": 6 },
-    "suppliers": { "upserted": 2 },
-    "products": { "upserted": 50 },
+    "categories": { "total": 6, "upserted": 2, "synced": 6 },
+    "suppliers": { "total": 2, "upserted": 1, "synced": 2 },
+    "products": { "total": 50, "upserted": 50, "synced": 50, "skippedMissingRefs": 0 },
     "variants": { "upserted": 608 }
   }
 }
 ```
+
+**Champs du retour:**
+
+| Champ | Description |
+|-------|-------------|
+| `total` | Nombre total de documents dans MongoDB (non supprimes) |
+| `pending` | En attente de migration (dry run uniquement) |
+| `upserted` | Nombre de documents insere/mis a jour dans ce run (sync uniquement) |
+| `synced` | Nombre de documents deja a jour dans PostgreSQL |
+| `skippedMissingRefs` | Produits sans `supplierId` ou `categoryId` — non migrables (produits anciens) |
+| `totalVariants` | Nombre de variantes associees aux produits pending (dry run) ou inserees (sync) |
 
 **Notes:**
 - Necessite `DATABASE_URL` configure dans l'environnement

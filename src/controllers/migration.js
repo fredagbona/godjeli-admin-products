@@ -25,6 +25,14 @@ function pendingQuery(Model) {
 }
 
 /**
+ * Mark a document as migrated. Sets migratedAt to now, which is always
+ * strictly newer than the last real updatedAt of the document.
+ */
+async function markMigrated(Model, doc) {
+  await Model.updateOne({ _id: doc._id }, { migratedAt: new Date() });
+}
+
+/**
  * Upsert a category into PostgreSQL.
  * Returns the PostgreSQL id (existing or new).
  */
@@ -240,17 +248,39 @@ async function syncMigration(req, res, next) {
     const dryRun = parseBoolean(req.query.dryRun) === true;
     const pool = getPool();
 
-    const categories = await pendingQuery(Category);
-    const suppliers = await pendingQuery(Supplier);
-    const products = await pendingQuery(Product);
+    const pendingCategories = await pendingQuery(Category);
+    const pendingSuppliers = await pendingQuery(Supplier);
+    const pendingProducts = await pendingQuery(Product);
+
+    // Count total entities in MongoDB (excluding soft-deleted)
+    const totalCategories = await Category.countDocuments({ deletedAt: null }).lean();
+    const totalSuppliers = await Supplier.countDocuments({ deletedAt: null }).lean();
+    const totalProducts = await Product.countDocuments({ deletedAt: null }).lean();
+
+    const syncedCategories = totalCategories - pendingCategories.length;
+    const syncedSuppliers = totalSuppliers - pendingSuppliers.length;
+    const syncedProducts = totalProducts - pendingProducts.length;
+
+    // Filter out products that can't be migrated (missing references)
+    const missingRefs = [];
+    const migratableProducts = [];
+    for (const p of pendingProducts) {
+      const catId = p.categoryId ? String(p.categoryId) : null;
+      const supId = p.supplierId ? String(p.supplierId) : null;
+      if (!catId || !supId) {
+        missingRefs.push(String(p._id));
+      } else {
+        migratableProducts.push(p);
+      }
+    }
 
     if (dryRun) {
       return ok(res, {
         dryRun: true,
-        categories: categories.length,
-        suppliers: suppliers.length,
-        products: products.length,
-        totalVariants: products.reduce((sum, p) => {
+        categories: { total: totalCategories, pending: pendingCategories.length, synced: syncedCategories },
+        suppliers: { total: totalSuppliers, pending: pendingSuppliers.length, synced: syncedSuppliers },
+        products: { total: totalProducts, pending: migratableProducts.length, synced: syncedProducts, skippedMissingRefs: missingRefs.length },
+        totalVariants: migratableProducts.reduce((sum, p) => {
           const sizes = p.variants?.size?.length || 0;
           const colors = p.variants?.color?.length || 0;
           return sum + (sizes * colors || sizes + colors);
@@ -264,35 +294,29 @@ async function syncMigration(req, res, next) {
     let categoryUpserts = 0;
     const categoryMap = {}; // MongoDB _id -> PostgreSQL id
 
-    for (const cat of categories) {
+    for (const cat of pendingCategories) {
       const pgId = await upsertCategory(pool, cat);
       categoryMap[String(cat._id)] = pgId;
-      await Category.updateOne({ _id: cat._id }, { migratedAt: cat.updatedAt });
+      await markMigrated(Category, cat);
       categoryUpserts++;
     }
 
     let supplierUpserts = 0;
     const supplierMap = {};
 
-    for (const sup of suppliers) {
+    for (const sup of pendingSuppliers) {
       const pgId = await upsertSupplier(pool, sup);
       supplierMap[String(sup._id)] = pgId;
-      await Supplier.updateOne({ _id: sup._id }, { migratedAt: sup.updatedAt });
+      await markMigrated(Supplier, sup);
       supplierUpserts++;
     }
 
     let productUpserts = 0;
     let totalVariants = 0;
 
-    for (const product of products) {
-      const catId = product.categoryId ? String(product.categoryId) : null;
-      const supId = product.supplierId ? String(product.supplierId) : null;
-
-      if (!catId || !supId) {
-        // Skip products with missing references (created before supplierId was added)
-        await Product.updateOne({ _id: product._id }, { migratedAt: product.updatedAt });
-        continue;
-      }
+    for (const product of migratableProducts) {
+      const catId = String(product.categoryId);
+      const supId = String(product.supplierId);
 
       // Category/supplier may have been migrated earlier; look up or upsert on the fly
       let pgCategoryId = categoryMap[catId];
@@ -303,7 +327,7 @@ async function syncMigration(req, res, next) {
         if (existingCat) {
           pgCategoryId = await upsertCategory(pool, existingCat);
           categoryMap[catId] = pgCategoryId;
-          await Category.updateOne({ _id: catId }, { migratedAt: existingCat.updatedAt });
+          await markMigrated(Category, existingCat);
         }
       }
       if (!pgCategoryId) {
@@ -315,7 +339,7 @@ async function syncMigration(req, res, next) {
         if (existingSup) {
           pgSupplierId = await upsertSupplier(pool, existingSup);
           supplierMap[supId] = pgSupplierId;
-          await Supplier.updateOne({ _id: supId }, { migratedAt: existingSup.updatedAt });
+          await markMigrated(Supplier, existingSup);
         }
       }
       if (!pgSupplierId) {
@@ -325,18 +349,21 @@ async function syncMigration(req, res, next) {
       const pgProductId = await upsertProduct(pool, product, pgCategoryId, pgSupplierId);
       const variantCount = await syncVariants(pool, pgProductId, product);
 
-      await Product.updateOne({ _id: product._id }, { migratedAt: product.updatedAt });
+      await markMigrated(Product, product);
       productUpserts++;
       totalVariants += variantCount;
     }
+
+    // Mark skipped products so they reappear in next dry-run
+    // (we do NOT set migratedAt on them)
 
     await pool.query('COMMIT');
 
     return ok(res, {
       dryRun: false,
-      categories: { upserted: categoryUpserts },
-      suppliers: { upserted: supplierUpserts },
-      products: { upserted: productUpserts },
+      categories: { total: totalCategories, upserted: categoryUpserts, synced: syncedCategories },
+      suppliers: { total: totalSuppliers, upserted: supplierUpserts, synced: syncedSuppliers },
+      products: { total: totalProducts, upserted: productUpserts, synced: syncedProducts, skippedMissingRefs: missingRefs.length },
       variants: { upserted: totalVariants },
     });
   } catch (error) {
