@@ -212,7 +212,9 @@ async function upsertProduct(pool, product, pgCategoryId, pgSupplierId) {
 }
 
 /**
- * Sync variants: delete existing ones for this product, then bulk insert.
+ * Sync variants: delete existing ones for this product, then insert sizes and
+ * colors as independent rows (not Cartesian product).
+ * Each row has either a size or a color (never both).
  */
 async function syncVariants(pool, pgProductId, product) {
   await pool.query(
@@ -224,29 +226,11 @@ async function syncVariants(pool, pgProductId, product) {
   const sizes = product.variants?.size || [];
   const colors = product.variants?.color || [];
 
-  const seen = new Set();
   for (const size of sizes) {
-    for (const color of colors) {
-      const key = `${size}|${color}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        variants.push([crypto.randomUUID(), pgProductId, size, color]);
-      }
-    }
-  }
-  for (const size of sizes) {
-    const key = `${size}|`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      variants.push([crypto.randomUUID(), pgProductId, size, null]);
-    }
+    variants.push([crypto.randomUUID(), pgProductId, size, null]);
   }
   for (const color of colors) {
-    const key = `|${color}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      variants.push([crypto.randomUUID(), pgProductId, null, color]);
-    }
+    variants.push([crypto.randomUUID(), pgProductId, null, color]);
   }
 
   if (variants.length === 0) return 0;
@@ -311,7 +295,7 @@ async function syncMigration(req, res, next) {
         totalVariants: migratableProducts.reduce((sum, { doc: p }) => {
           const sizes = p.variants?.size?.length || 0;
           const colors = p.variants?.color?.length || 0;
-          return sum + (sizes * colors || sizes + colors);
+          return sum + sizes + colors;
         }, 0),
       });
     }
