@@ -12,24 +12,46 @@ function parseBoolean(value) {
 }
 
 /**
- * Find entities that need migration: migratedAt is null OR updatedAt > migratedAt
+ * Compare MongoDB vs PostgreSQL state to find documents that need syncing.
+ * Returns a map: MongoDB _id (string) → { action: 'insert' | 'update' | null }
+ * null means PG is already up to date.
  */
-function pendingQuery(Model) {
-  return Model.find({
-    deletedAt: null,
-    $or: [
-      { migratedAt: null },
-      { $expr: { $gt: ['$updatedAt', '$migratedAt'] } },
-    ],
-  }).lean();
-}
+async function findPendingDocs(pool, collectionName, Model) {
+  const mongoDocs = await Model.find({ deletedAt: null }).lean();
+  console.log(`[migration] ${collectionName}: ${mongoDocs.length} documents in MongoDB`);
 
-/**
- * Mark a document as migrated. Sets migratedAt to now, which is always
- * strictly newer than the last real updatedAt of the document.
- */
-async function markMigrated(Model, doc) {
-  await Model.updateOne({ _id: doc._id }, { migratedAt: new Date() });
+  if (mongoDocs.length === 0) return { pending: [], total: 0 };
+
+  const sourceIds = mongoDocs.map(d => String(d._id));
+
+  // Query PostgreSQL for sourceId + updatedAt
+  const pgResult = await pool.query(
+    `SELECT "sourceId", "updatedAt" FROM "${collectionName}" WHERE "sourceId" = ANY($1)`,
+    [sourceIds]
+  );
+
+  const pgMap = {};
+  for (const row of pgResult.rows) {
+    pgMap[row.sourceId] = row.updatedAt;
+  }
+
+  const pending = [];
+  for (const doc of mongoDocs) {
+    const id = String(doc._id);
+    const pgUpdatedAt = pgMap[id];
+
+    if (!pgUpdatedAt) {
+      // Not in PostgreSQL yet → insert
+      pending.push({ doc, action: 'insert' });
+    } else if (new Date(doc.updatedAt) > new Date(pgUpdatedAt)) {
+      // MongoDB is newer → update
+      pending.push({ doc, action: 'update' });
+    }
+    // else: PG is up to date, skip
+  }
+
+  console.log(`[migration] ${collectionName}: ${pending.length} docs need syncing`);
+  return { pending, total: mongoDocs.length };
 }
 
 /**
@@ -244,18 +266,24 @@ async function syncVariants(pool, pgProductId, product) {
 }
 
 async function syncMigration(req, res, next) {
+  let transactionStarted = false;
+
   try {
     const dryRun = parseBoolean(req.query.dryRun) === true;
     const pool = getPool();
 
-    const pendingCategories = await pendingQuery(Category);
-    const pendingSuppliers = await pendingQuery(Supplier);
-    const pendingProducts = await pendingQuery(Product);
+    // Find pending docs by comparing MongoDB vs PostgreSQL state
+    const categoriesResult = await findPendingDocs(pool, 'Category', Category);
+    const suppliersResult = await findPendingDocs(pool, 'Supplier', Supplier);
+    const productsResult = await findPendingDocs(pool, 'Product', Product);
 
-    // Count total entities in MongoDB (excluding soft-deleted)
-    const totalCategories = await Category.countDocuments({ deletedAt: null }).lean();
-    const totalSuppliers = await Supplier.countDocuments({ deletedAt: null }).lean();
-    const totalProducts = await Product.countDocuments({ deletedAt: null }).lean();
+    const pendingCategories = categoriesResult.pending;
+    const pendingSuppliers = suppliersResult.pending;
+    const pendingProducts = productsResult.pending;
+
+    const totalCategories = categoriesResult.total;
+    const totalSuppliers = suppliersResult.total;
+    const totalProducts = productsResult.total;
 
     const syncedCategories = totalCategories - pendingCategories.length;
     const syncedSuppliers = totalSuppliers - pendingSuppliers.length;
@@ -264,13 +292,13 @@ async function syncMigration(req, res, next) {
     // Filter out products that can't be migrated (missing references)
     const missingRefs = [];
     const migratableProducts = [];
-    for (const p of pendingProducts) {
+    for (const { doc: p } of pendingProducts) {
       const catId = p.categoryId ? String(p.categoryId) : null;
       const supId = p.supplierId ? String(p.supplierId) : null;
       if (!catId || !supId) {
         missingRefs.push(String(p._id));
       } else {
-        migratableProducts.push(p);
+        migratableProducts.push({ doc: p, action: pendingProducts.find(pp => String(pp.doc._id) === String(p._id))?.action });
       }
     }
 
@@ -280,7 +308,7 @@ async function syncMigration(req, res, next) {
         categories: { total: totalCategories, pending: pendingCategories.length, synced: syncedCategories },
         suppliers: { total: totalSuppliers, pending: pendingSuppliers.length, synced: syncedSuppliers },
         products: { total: totalProducts, pending: migratableProducts.length, synced: syncedProducts, skippedMissingRefs: missingRefs.length },
-        totalVariants: migratableProducts.reduce((sum, p) => {
+        totalVariants: migratableProducts.reduce((sum, { doc: p }) => {
           const sizes = p.variants?.size?.length || 0;
           const colors = p.variants?.color?.length || 0;
           return sum + (sizes * colors || sizes + colors);
@@ -288,33 +316,36 @@ async function syncMigration(req, res, next) {
       });
     }
 
+    console.log('[migration] Starting PostgreSQL transaction...');
+
     // Execute in a transaction
     await pool.query('BEGIN');
+    transactionStarted = true;
 
     let categoryUpserts = 0;
     const categoryMap = {}; // MongoDB _id -> PostgreSQL id
 
-    for (const cat of pendingCategories) {
+    for (const { doc: cat } of pendingCategories) {
       const pgId = await upsertCategory(pool, cat);
       categoryMap[String(cat._id)] = pgId;
-      await markMigrated(Category, cat);
       categoryUpserts++;
     }
+    console.log(`[migration] Categories upserted: ${categoryUpserts}`);
 
     let supplierUpserts = 0;
     const supplierMap = {};
 
-    for (const sup of pendingSuppliers) {
+    for (const { doc: sup } of pendingSuppliers) {
       const pgId = await upsertSupplier(pool, sup);
       supplierMap[String(sup._id)] = pgId;
-      await markMigrated(Supplier, sup);
       supplierUpserts++;
     }
+    console.log(`[migration] Suppliers upserted: ${supplierUpserts}`);
 
     let productUpserts = 0;
     let totalVariants = 0;
 
-    for (const product of migratableProducts) {
+    for (const { doc: product } of migratableProducts) {
       const catId = String(product.categoryId);
       const supId = String(product.supplierId);
 
@@ -327,7 +358,6 @@ async function syncMigration(req, res, next) {
         if (existingCat) {
           pgCategoryId = await upsertCategory(pool, existingCat);
           categoryMap[catId] = pgCategoryId;
-          await markMigrated(Category, existingCat);
         }
       }
       if (!pgCategoryId) {
@@ -339,7 +369,6 @@ async function syncMigration(req, res, next) {
         if (existingSup) {
           pgSupplierId = await upsertSupplier(pool, existingSup);
           supplierMap[supId] = pgSupplierId;
-          await markMigrated(Supplier, existingSup);
         }
       }
       if (!pgSupplierId) {
@@ -349,15 +378,13 @@ async function syncMigration(req, res, next) {
       const pgProductId = await upsertProduct(pool, product, pgCategoryId, pgSupplierId);
       const variantCount = await syncVariants(pool, pgProductId, product);
 
-      await markMigrated(Product, product);
       productUpserts++;
       totalVariants += variantCount;
     }
-
-    // Mark skipped products so they reappear in next dry-run
-    // (we do NOT set migratedAt on them)
+    console.log(`[migration] Products upserted: ${productUpserts}, variants: ${totalVariants}`);
 
     await pool.query('COMMIT');
+    console.log('[migration] Transaction committed successfully.');
 
     return ok(res, {
       dryRun: false,
@@ -367,12 +394,15 @@ async function syncMigration(req, res, next) {
       variants: { upserted: totalVariants },
     });
   } catch (error) {
-    // Try to rollback if in transaction
-    try {
-      const pool = getPool();
-      await pool.query('ROLLBACK');
-    } catch (_) {
-      // ignore rollback errors
+    // Only rollback if transaction was actually started
+    if (transactionStarted) {
+      try {
+        const pool = getPool();
+        await pool.query('ROLLBACK');
+        console.log('[migration] Transaction rolled back.');
+      } catch (_) {
+        // ignore rollback errors
+      }
     }
 
     if (error.code === 'ECONNREFUSED' || error.code === '28P01') {
