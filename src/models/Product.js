@@ -82,11 +82,6 @@ const productSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-const FX_RATES = {
-  EUR_TO_XOF: 700,
-  USD_TO_XOF: 600,
-};
-
 productSchema.virtual('price').get(function getPrice() {
   const eur = this.pricing?.totalPriceEur;
   if (eur == null) return null;
