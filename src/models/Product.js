@@ -2,6 +2,15 @@ const mongoose = require('mongoose');
 const { ORIGINS } = require('../services/pricing.service');
 const { slugify } = require('../utils/slugify');
 
+function round2(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+const FX_RATES = {
+  EUR_TO_XOF: 700,
+  USD_TO_XOF: 600,
+};
+
 const pricingSchema = new mongoose.Schema(
   {
     costPriceEur: { type: Number, required: true, min: 0 },
@@ -73,8 +82,35 @@ const productSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
+const FX_RATES = {
+  EUR_TO_XOF: 700,
+  USD_TO_XOF: 600,
+};
+
 productSchema.virtual('price').get(function getPrice() {
-  return this.pricing?.totalPriceEur ?? null;
+  const eur = this.pricing?.totalPriceEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+// Only expose totalPriceEur in API responses, hide internal pricing details
+productSchema.set('toJSON', {
+  virtuals: true,
+  transform(_doc, ret) {
+    delete ret.pricing;
+    return ret;
+  },
+});
+
+productSchema.set('toObject', {
+  virtuals: true,
+  transform(_doc, ret) {
+    delete ret.pricing;
+    return ret;
+  },
 });
 
 productSchema.pre('save', async function preSave() {
