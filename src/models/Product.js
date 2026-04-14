@@ -96,6 +96,43 @@ productSchema.virtual('price').get(function getPrice() {
   };
 });
 
+productSchema.virtual('costPrice').get(function getCostPrice() {
+  const eur = this.pricing?.costPriceEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+productSchema.virtual('logisticsCost').get(function getLogisticsCost() {
+  const eur = this.pricing?.logisticsCostEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+productSchema.virtual('customsFee').get(function getCustomsFee() {
+  const eur = this.pricing?.customsFeeEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+productSchema.virtual('realCost').get(function getRealCost() {
+  const pricing = this.pricing;
+  if (!pricing) return null;
+  const eur = round2(pricing.costPriceEur + pricing.logisticsCostEur + pricing.customsFeeEur);
+  return {
+    eur,
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
 // Only expose totalPriceEur in API responses, hide internal pricing details
 productSchema.set('toJSON', {
   virtuals: true,
