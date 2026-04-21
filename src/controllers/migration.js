@@ -96,14 +96,17 @@ async function upsertSupplier(pool, sup) {
   const sql = `
     INSERT INTO "Supplier" (
       "id", "sourceId", "slug", "name", "type", "country", "deliveryDelay",
+      "logo", "images",
       "rating", "isActive", "createdAt", "updatedAt"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT ("sourceId") DO UPDATE SET
       "slug" = EXCLUDED."slug",
       "name" = EXCLUDED."name",
       "type" = EXCLUDED."type",
       "country" = EXCLUDED."country",
       "deliveryDelay" = EXCLUDED."deliveryDelay",
+      "logo" = EXCLUDED."logo",
+      "images" = EXCLUDED."images",
       "rating" = EXCLUDED."rating",
       "isActive" = EXCLUDED."isActive",
       "updatedAt" = EXCLUDED."updatedAt"
@@ -117,6 +120,8 @@ async function upsertSupplier(pool, sup) {
     sup.type,
     sup.country,
     sup.deliveryDelay,
+    sup.logo ?? null,
+    sup.images && sup.images.length ? sup.images : [],
     sup.rating ?? null,
     sup.isActive ?? true,
     sup.createdAt,

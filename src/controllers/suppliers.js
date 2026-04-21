@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const Supplier = require('../models/Supplier');
+const imageService = require('../services/image.service');
 const { ok, created, badRequest, notFound, fail } = require('../middlewares/respond');
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
@@ -11,6 +12,8 @@ const supplierSchema = z.object({
   type: z.nativeEnum(Object.fromEntries(SUPPLIER_TYPES.map((t) => [t, t]))),
   country: z.string().trim().min(1),
   deliveryDelay: z.string().min(1),
+  logo: z.string().url().optional().nullable(),
+  images: z.array(z.string().url()).optional(),
   rating: z.number().int().min(1).max(5).optional().nullable(),
   isActive: z.boolean().optional(),
 });
@@ -86,9 +89,61 @@ async function deleteSupplier(req, res, next) {
   }
 }
 
+/**
+ * Upload Cloudinary du logo et/ou d'images de galerie, puis mise à jour du fournisseur.
+ * - champ `logo` (fichier unique, optionnel) : remplace `supplier.logo`
+ * - champ `images` (fichiers, optionnel) : ajoute les URLs à `supplier.images` (append)
+ */
+async function uploadSupplierAssets(req, res, next) {
+  try {
+    const id = objectIdSchema.parse(req.params.id);
+    const supplier = await Supplier.findOne({ _id: id, deletedAt: null });
+    if (!supplier) return notFound(res, 'Supplier not found');
+
+    const logoFiles = req.files?.logo;
+    const galleryFiles = req.files?.images;
+    const logoFile = Array.isArray(logoFiles) ? logoFiles[0] : null;
+    const imageFiles = Array.isArray(galleryFiles) ? galleryFiles : [];
+
+    if (!logoFile && imageFiles.length === 0) {
+      return badRequest(res, 'Validation failed', [
+        { message: 'Fournir au moins un fichier dans le champ logo ou images.' },
+      ]);
+    }
+
+    let uploadedLogo = null;
+    if (logoFile) {
+      const [meta] = await imageService.uploadSupplierMedia([logoFile]);
+      supplier.logo = meta.url;
+      uploadedLogo = meta;
+    }
+
+    let uploadedImages = [];
+    if (imageFiles.length > 0) {
+      uploadedImages = await imageService.uploadSupplierMedia(imageFiles);
+      const urls = uploadedImages.map((u) => u.url);
+      supplier.images = [...(supplier.images || []), ...urls];
+    }
+
+    await supplier.save();
+
+    return ok(res, {
+      supplier,
+      uploaded: {
+        logo: uploadedLogo,
+        images: uploadedImages,
+      },
+    });
+  } catch (error) {
+    if (error.name === 'ZodError') return badRequest(res, 'Validation failed', error.errors);
+    next(error);
+  }
+}
+
 module.exports = {
   listSuppliers,
   createSupplier,
   updateSupplier,
   deleteSupplier,
+  uploadSupplierAssets,
 };

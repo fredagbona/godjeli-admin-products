@@ -26,9 +26,7 @@ function uploadBuffer(file, folder = 'godjeli/admin') {
   });
 }
 
-async function uploadAdminImages(files) {
-  const uploads = await Promise.all(files.map((file) => uploadBuffer(file)));
-
+function mapUploadResults(uploads) {
   return uploads.map((upload) => ({
     url: upload.secure_url,
     publicId: upload.public_id,
@@ -38,4 +36,14 @@ async function uploadAdminImages(files) {
   }));
 }
 
-module.exports = { uploadAdminImages };
+async function uploadAdminImages(files) {
+  const uploads = await Promise.all(files.map((file) => uploadBuffer(file)));
+  return mapUploadResults(uploads);
+}
+
+async function uploadSupplierMedia(files) {
+  const uploads = await Promise.all(files.map((file) => uploadBuffer(file, 'godjeli/admin/suppliers')));
+  return mapUploadResults(uploads);
+}
+
+module.exports = { uploadAdminImages, uploadSupplierMedia };

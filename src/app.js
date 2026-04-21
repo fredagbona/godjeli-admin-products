@@ -53,6 +53,11 @@ app.delete('/api/admin/categories/:id', categoryController.deleteCategory);
 
 app.get('/api/admin/suppliers', supplierController.listSuppliers);
 app.post('/api/admin/suppliers', supplierController.createSupplier);
+app.post(
+  '/api/admin/suppliers/:id/uploads',
+  uploadController.supplierAssetsUpload,
+  supplierController.uploadSupplierAssets
+);
 app.patch('/api/admin/suppliers/:id', supplierController.updateSupplier);
 app.delete('/api/admin/suppliers/:id', supplierController.deleteSupplier);
 
