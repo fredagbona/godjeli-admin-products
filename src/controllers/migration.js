@@ -54,6 +54,22 @@ async function findPendingDocs(pool, collectionName, Model) {
   return { pending, total: mongoDocs.length };
 }
 
+async function getColumnDataType(pool, tableName, columnName) {
+  const result = await pool.query(
+    `
+      SELECT data_type, udt_name
+      FROM information_schema.columns
+      WHERE table_name = $1 AND column_name = $2
+      LIMIT 1
+    `,
+    [tableName, columnName]
+  );
+
+  if (result.rowCount === 0) return null;
+  const { data_type: dataType, udt_name: udtName } = result.rows[0];
+  return dataType === 'ARRAY' ? udtName : dataType;
+}
+
 /**
  * Upsert a category into PostgreSQL.
  * Returns the PostgreSQL id (existing or new).
@@ -93,10 +109,14 @@ async function upsertCategory(pool, cat) {
  */
 async function upsertSupplier(pool, sup) {
   const id = crypto.randomUUID();
+  const imageColumnType = await getColumnDataType(pool, 'Supplier', 'image');
+  const imageValue = imageColumnType === 'json' || imageColumnType === 'jsonb'
+    ? JSON.stringify(sup.image ?? null)
+    : (sup.image ?? null);
   const sql = `
     INSERT INTO "Supplier" (
       "id", "sourceId", "slug", "name", "type", "country", "deliveryDelay",
-      "logo", "images",
+      "logo", "image",
       "rating", "isActive", "createdAt", "updatedAt"
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT ("sourceId") DO UPDATE SET
@@ -106,7 +126,7 @@ async function upsertSupplier(pool, sup) {
       "country" = EXCLUDED."country",
       "deliveryDelay" = EXCLUDED."deliveryDelay",
       "logo" = EXCLUDED."logo",
-      "images" = EXCLUDED."images",
+      "image" = EXCLUDED."image",
       "rating" = EXCLUDED."rating",
       "isActive" = EXCLUDED."isActive",
       "updatedAt" = EXCLUDED."updatedAt"
@@ -121,7 +141,7 @@ async function upsertSupplier(pool, sup) {
     sup.country,
     sup.deliveryDelay,
     sup.logo ?? null,
-    sup.images && sup.images.length ? sup.images : [],
+    imageValue,
     sup.rating ?? null,
     sup.isActive ?? true,
     sup.createdAt,

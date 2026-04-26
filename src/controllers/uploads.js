@@ -23,17 +23,17 @@ const uploadMiddleware = multer({
   fileFilter: imageFileFilter,
 });
 
-/** Logo (1) + galerie (jusqu'à 10) pour un fournisseur. */
+/** Logo (1) + image principale (1) pour un fournisseur. */
 const supplierAssetsUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 11,
+    files: 2,
   },
   fileFilter: imageFileFilter,
 }).fields([
   { name: 'logo', maxCount: 1 },
-  { name: 'images', maxCount: 10 },
+  { name: 'image', maxCount: 1 },
 ]);
 
 async function uploadImages(req, res, next) {

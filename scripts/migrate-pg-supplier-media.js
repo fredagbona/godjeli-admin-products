@@ -1,6 +1,6 @@
 /**
- * Migration PostgreSQL idempotente : ajoute logo + images sur la table "Supplier"
- * (alignée avec le modèle Mongo et src/controllers/migration.js).
+ * Migration PostgreSQL idempotente : ajoute logo + image sur la table "Supplier"
+ * (alignée avec le modèle backend et src/controllers/migration.js).
  *
  * Usage:
  *   node scripts/migrate-pg-supplier-media.js
@@ -31,9 +31,9 @@ async function main() {
 
     await client.query(`
       ALTER TABLE "Supplier"
-      ADD COLUMN IF NOT EXISTS "images" JSONB NOT NULL DEFAULT '[]'::jsonb
+      ADD COLUMN IF NOT EXISTS "image" TEXT
     `);
-    console.log('[migrate-pg-supplier-media] Colonne "Supplier"."images" : vérifiée / ajoutée.');
+    console.log('[migrate-pg-supplier-media] Colonne "Supplier"."image" : vérifiée / ajoutée.');
 
     await client.query('COMMIT');
     console.log('[migrate-pg-supplier-media] Terminé avec succès.');

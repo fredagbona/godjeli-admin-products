@@ -13,7 +13,7 @@ const supplierSchema = z.object({
   country: z.string().trim().min(1),
   deliveryDelay: z.string().min(1),
   logo: z.string().url().optional().nullable(),
-  images: z.array(z.string().url()).optional(),
+  image: z.string().url().optional().nullable(),
   rating: z.number().int().min(1).max(5).optional().nullable(),
   isActive: z.boolean().optional(),
 });
@@ -90,9 +90,9 @@ async function deleteSupplier(req, res, next) {
 }
 
 /**
- * Upload Cloudinary du logo et/ou d'images de galerie, puis mise à jour du fournisseur.
+ * Upload Cloudinary du logo et/ou de l'image principale, puis mise à jour du fournisseur.
  * - champ `logo` (fichier unique, optionnel) : remplace `supplier.logo`
- * - champ `images` (fichiers, optionnel) : ajoute les URLs à `supplier.images` (append)
+ * - champ `image` (fichier unique, optionnel) : remplace `supplier.image`
  */
 async function uploadSupplierAssets(req, res, next) {
   try {
@@ -101,13 +101,13 @@ async function uploadSupplierAssets(req, res, next) {
     if (!supplier) return notFound(res, 'Supplier not found');
 
     const logoFiles = req.files?.logo;
-    const galleryFiles = req.files?.images;
     const logoFile = Array.isArray(logoFiles) ? logoFiles[0] : null;
-    const imageFiles = Array.isArray(galleryFiles) ? galleryFiles : [];
+    const imageFiles = Array.isArray(req.files?.image) ? req.files.image : [];
+    const imageFile = imageFiles[0] || null;
 
-    if (!logoFile && imageFiles.length === 0) {
+    if (!logoFile && !imageFile) {
       return badRequest(res, 'Validation failed', [
-        { message: 'Fournir au moins un fichier dans le champ logo ou images.' },
+        { message: 'Fournir au moins un fichier dans le champ logo ou image.' },
       ]);
     }
 
@@ -118,11 +118,11 @@ async function uploadSupplierAssets(req, res, next) {
       uploadedLogo = meta;
     }
 
-    let uploadedImages = [];
-    if (imageFiles.length > 0) {
-      uploadedImages = await imageService.uploadSupplierMedia(imageFiles);
-      const urls = uploadedImages.map((u) => u.url);
-      supplier.images = [...(supplier.images || []), ...urls];
+    let uploadedImage = null;
+    if (imageFile) {
+      const [meta] = await imageService.uploadSupplierMedia([imageFile]);
+      supplier.image = meta.url;
+      uploadedImage = meta;
     }
 
     await supplier.save();
@@ -131,7 +131,7 @@ async function uploadSupplierAssets(req, res, next) {
       supplier,
       uploaded: {
         logo: uploadedLogo,
-        images: uploadedImages,
+        image: uploadedImage,
       },
     });
   } catch (error) {

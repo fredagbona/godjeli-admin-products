@@ -164,9 +164,7 @@ Retour:
       "country": "France",
       "deliveryDelay": "5-7 jours",
       "logo": "https://res.cloudinary.com/.../logo.webp",
-      "images": [
-        "https://res.cloudinary.com/.../banner.webp"
-      ],
+      "image": "https://res.cloudinary.com/.../banner.webp",
       "rating": 4,
       "isActive": true,
       "deletedAt": null,
@@ -187,9 +185,7 @@ Retour:
   "country": "France",
   "deliveryDelay": "5-7 jours",
   "logo": "https://res.cloudinary.com/...",
-  "images": [
-    "https://res.cloudinary.com/.../1.webp"
-  ],
+  "image": "https://res.cloudinary.com/.../1.webp",
   "rating": 4
 }
 ```
@@ -199,16 +195,16 @@ Retour:
 - `rating` est un entier de 1 a 5 (optionnel)
 - `deliveryDelay` est un string libre (ex: `"5-7 jours"`, `"2-3 semaines"`)
 - `logo` — URL d'une image (optionnel); pour uploader un fichier depuis l'admin, preferer `POST /api/admin/suppliers/:id/uploads`
-- `images` — tableau d'URLs (optionnel, defaut `[]`); les fichiers peuvent aussi etre ajoutes via l'endpoint dedie ci-dessous
+- `image` — URL d'une image principale (optionnel); pour uploader un fichier depuis l'admin, preferer `POST /api/admin/suppliers/:id/uploads`
 
 ### `POST /api/admin/suppliers/:id/uploads`
 
-Upload dedie du **logo** et/ou d'une **galerie** pour un fournisseur (multipart vers Cloudinary, puis mise a jour MongoDB).
+Upload dedie du **logo** et/ou de l'**image principale** pour un fournisseur (multipart vers Cloudinary, puis mise a jour MongoDB).
 
 - `Content-Type: multipart/form-data`
 - champs fichiers:
   - `logo` — au plus **1** image (optionnel); remplace la valeur de `supplier.logo`
-  - `images` — jusqu'a **10** images (optionnel); les URLs sont **ajoutees** a la fin de `supplier.images` (append)
+  - `image` — au plus **1** image (optionnel); remplace la valeur de `supplier.image`
 - au moins un des deux champs doit contenir un fichier
 
 Formats acceptes: JPEG, PNG, WebP, AVIF (max 5 Mo par fichier, comme `POST /api/admin/uploads/images`).
@@ -224,10 +220,7 @@ Retour:
       "name": "Fashion Wholesale Paris",
       "slug": "fashion-wholesale-paris",
       "logo": "https://res.cloudinary.com/.../logo.webp",
-      "images": [
-        "https://res.cloudinary.com/.../a.webp",
-        "https://res.cloudinary.com/.../b.webp"
-      ],
+      "image": "https://res.cloudinary.com/.../a.webp",
       "type": "GROSSISTE",
       "country": "France",
       "deliveryDelay": "5-7 jours",
@@ -238,35 +231,33 @@ Retour:
       "updatedAt": "2026-04-10T12:00:00.000Z",
       "__v": 0
     },
-    "uploaded": {
-      "logo": {
-        "url": "https://res.cloudinary.com/.../logo.webp",
-        "publicId": "godjeli/admin/suppliers/1733-logo",
-        "width": 800,
-        "height": 400,
-        "format": "webp"
-      },
-      "images": [
-        {
-          "url": "https://res.cloudinary.com/.../b.webp",
-          "publicId": "godjeli/admin/suppliers/1733-b",
-          "width": 1200,
-          "height": 800,
+      "uploaded": {
+        "logo": {
+          "url": "https://res.cloudinary.com/.../logo.webp",
+          "publicId": "godjeli/admin/suppliers/1733-logo",
+          "width": 800,
+          "height": 400,
           "format": "webp"
-        }
-      ]
+        },
+      "image": {
+        "url": "https://res.cloudinary.com/.../b.webp",
+        "publicId": "godjeli/admin/suppliers/1733-b",
+        "width": 1200,
+        "height": 800,
+        "format": "webp"
+      }
     }
   }
 }
 ```
 
-Si seul `images` est envoye, `uploaded.logo` vaut `null`. Si seul `logo` est envoye, `uploaded.images` est un tableau vide.
+Si seul `image` est envoye, `uploaded.logo` vaut `null`. Si seul `logo` est envoye, `uploaded.image` vaut `null`.
 
-**PostgreSQL (migration sync):** la table `"Supplier"` doit inclure les colonnes `"logo"` et `"images"` pour que la sync reste coherent avec MongoDB (meme representation que pour `"Product"."images"`, typiquement JSONB). Exemple:
+**PostgreSQL (migration sync):** la table `"Supplier"` doit inclure les colonnes `"logo"` et `"image"` pour que la sync reste coherent avec MongoDB. Exemple:
 
 ```sql
 ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "logo" TEXT;
-ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "images" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "image" TEXT;
 ```
 
 Même effet de façon idempotente : `npm run migrate:pg:supplier-media` (voir `scripts/migrate-pg-supplier-media.js`).
@@ -375,7 +366,7 @@ Exemple de retour:
     "name": "Fashion Wholesale Paris",
     "slug": "fashion-wholesale-paris",
     "logo": null,
-    "images": [],
+    "image": null,
     "type": "GROSSISTE",
     "country": "France",
     "deliveryDelay": "5-7 jours",

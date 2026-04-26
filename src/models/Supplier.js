@@ -11,10 +11,7 @@ const supplierSchema = new mongoose.Schema(
     country: { type: String, required: true, trim: true },
     deliveryDelay: { type: String, required: true },
     logo: { type: String, default: null },
-    images: {
-      type: [{ type: String }],
-      default: [],
-    },
+    image: { type: String, default: null },
     rating: { type: Number, min: 1, max: 5 },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },
