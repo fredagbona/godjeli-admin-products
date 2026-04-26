@@ -231,14 +231,14 @@ Retour:
       "updatedAt": "2026-04-10T12:00:00.000Z",
       "__v": 0
     },
-      "uploaded": {
-        "logo": {
-          "url": "https://res.cloudinary.com/.../logo.webp",
-          "publicId": "godjeli/admin/suppliers/1733-logo",
-          "width": 800,
-          "height": 400,
-          "format": "webp"
-        },
+    "uploaded": {
+      "logo": {
+        "url": "https://res.cloudinary.com/.../logo.webp",
+        "publicId": "godjeli/admin/suppliers/1733-logo",
+        "width": 800,
+        "height": 400,
+        "format": "webp"
+      },
       "image": {
         "url": "https://res.cloudinary.com/.../b.webp",
         "publicId": "godjeli/admin/suppliers/1733-b",
@@ -261,6 +261,11 @@ ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "image" TEXT;
 ```
 
 Même effet de façon idempotente : `npm run migrate:pg:supplier-media` (voir `scripts/migrate-pg-supplier-media.js`).
+
+**Note d'implementation migration :**
+- `POST /api/admin/migration/sync` migre aussi les suppliers, pas seulement les categories et produits.
+- Le champ `image` est maintenant envoye vers PostgreSQL comme une valeur scalaire `TEXT` si la colonne est de type texte, ou stringifiee si la colonne a ete creee en `json/jsonb` sur une ancienne version du schema.
+- Cela evite l'erreur `invalid input syntax for type json` quand l'URL est poussee dans une colonne JSON.
 
 ### `PATCH /api/admin/suppliers/:id`
 
@@ -456,7 +461,8 @@ Retour:
     "categories": { "total": 6, "pending": 0, "synced": 6 },
     "suppliers": { "total": 2, "pending": 0, "synced": 2 },
     "products": { "total": 50, "pending": 0, "synced": 50, "skippedMissingRefs": 0 },
-    "totalVariants": 0
+    "totalVariants": 0,
+    "deletions": { "categories": 0, "suppliers": 0, "products": 0, "relatedProducts": 0 }
   }
 }
 ```
@@ -477,7 +483,8 @@ Retour:
     "categories": { "total": 6, "upserted": 2, "synced": 6 },
     "suppliers": { "total": 2, "upserted": 1, "synced": 2 },
     "products": { "total": 50, "upserted": 50, "synced": 50, "skippedMissingRefs": 0 },
-    "variants": { "upserted": 608 }
+    "variants": { "upserted": 608 },
+    "deletions": { "categories": 1, "suppliers": 1, "products": 3, "relatedProducts": 4 }
   }
 }
 ```
@@ -492,14 +499,23 @@ Retour:
 | `synced` | Nombre de documents deja a jour dans PostgreSQL |
 | `skippedMissingRefs` | Produits sans `supplierId` ou `categoryId` — non migrables (produits anciens) |
 | `totalVariants` | Nombre de variantes associees aux produits pending (dry run) ou inserees (sync) |
+| `deletions` | Statistiques des suppressions appliquees dans PostgreSQL pour les documents soft-supprimes Mongo |
 
 **Notes:**
 - Necessite `DATABASE_URL` configure dans l'environnement
 - Toute la synchronisation s'execute dans une transaction PostgreSQL (rollback en cas d'erreur)
 - Les categories et fournisseurs dont le produit depend sont migres automatiquement si necessaire
 - Les variantes existantes du produit sont supprimees puis re-inserees pour garantir la coherence
+- Les documents Mongo soft-supprimes (`deletedAt != null`) provoquent des suppressions correspondantes dans PostgreSQL
+- Lorsqu'une categorie ou un fournisseur est supprime, les produits relies sont aussi supprimes dans PostgreSQL
 - Le champ `migratedAt` est defini sur chaque document MongoDB apres succes
 - Retourne `DB_UNAVAILABLE` (503) si PostgreSQL n'est pas joignable
+
+**Comportement de suppression:**
+- `Category` supprimee dans MongoDB -> suppression de la ligne `Category` correspondante en PostgreSQL
+- `Supplier` supprime dans MongoDB -> suppression de la ligne `Supplier` correspondante en PostgreSQL
+- `Product` supprime dans MongoDB -> suppression de la ligne `Product` correspondante en PostgreSQL
+- Si une categorie ou un fournisseur est supprime, tous les produits qui lui sont rattaches sont supprimes aussi en PostgreSQL
 
 ## Pricing
 

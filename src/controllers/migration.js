@@ -54,6 +54,11 @@ async function findPendingDocs(pool, collectionName, Model) {
   return { pending, total: mongoDocs.length };
 }
 
+async function findDeletedSourceIds(Model) {
+  const deletedDocs = await Model.find({ deletedAt: { $ne: null } }).lean();
+  return deletedDocs.map((doc) => String(doc._id));
+}
+
 async function getColumnDataType(pool, tableName, columnName) {
   const result = await pool.query(
     `
@@ -68,6 +73,41 @@ async function getColumnDataType(pool, tableName, columnName) {
   if (result.rowCount === 0) return null;
   const { data_type: dataType, udt_name: udtName } = result.rows[0];
   return dataType === 'ARRAY' ? udtName : dataType;
+}
+
+async function deleteBySourceIds(pool, tableName, sourceIds) {
+  if (!sourceIds || sourceIds.length === 0) return 0;
+  const result = await pool.query(
+    `DELETE FROM "${tableName}" WHERE "sourceId" = ANY($1)`,
+    [sourceIds]
+  );
+  return result.rowCount || 0;
+}
+
+async function deleteProductsByRelatedSourceIds(pool, categorySourceIds, supplierSourceIds) {
+  const hasCategoryIds = categorySourceIds && categorySourceIds.length > 0;
+  const hasSupplierIds = supplierSourceIds && supplierSourceIds.length > 0;
+
+  if (!hasCategoryIds && !hasSupplierIds) return 0;
+
+  const clauses = [];
+  const params = [];
+  let idx = 1;
+
+  if (hasCategoryIds) {
+    clauses.push(`"categoryId" IN (SELECT id FROM "Category" WHERE "sourceId" = ANY($${idx}))`);
+    params.push(categorySourceIds);
+    idx += 1;
+  }
+
+  if (hasSupplierIds) {
+    clauses.push(`"supplierId" IN (SELECT id FROM "Supplier" WHERE "sourceId" = ANY($${idx}))`);
+    params.push(supplierSourceIds);
+  }
+
+  const sql = `DELETE FROM "Product" WHERE ${clauses.join(' OR ')}`;
+  const result = await pool.query(sql, params);
+  return result.rowCount || 0;
 }
 
 /**
@@ -285,6 +325,9 @@ async function syncMigration(req, res, next) {
     const categoriesResult = await findPendingDocs(pool, 'Category', Category);
     const suppliersResult = await findPendingDocs(pool, 'Supplier', Supplier);
     const productsResult = await findPendingDocs(pool, 'Product', Product);
+    const deletedCategorySourceIds = await findDeletedSourceIds(Category);
+    const deletedSupplierSourceIds = await findDeletedSourceIds(Supplier);
+    const deletedProductSourceIds = await findDeletedSourceIds(Product);
 
     const pendingCategories = categoriesResult.pending;
     const pendingSuppliers = suppliersResult.pending;
@@ -297,6 +340,12 @@ async function syncMigration(req, res, next) {
     const syncedCategories = totalCategories - pendingCategories.length;
     const syncedSuppliers = totalSuppliers - pendingSuppliers.length;
     const syncedProducts = totalProducts - pendingProducts.length;
+    const deletions = {
+      categories: deletedCategorySourceIds.length,
+      suppliers: deletedSupplierSourceIds.length,
+      products: deletedProductSourceIds.length,
+      relatedProducts: 0,
+    };
 
     // Filter out products that can't be migrated (missing references)
     const missingRefs = [];
@@ -312,6 +361,12 @@ async function syncMigration(req, res, next) {
     }
 
     if (dryRun) {
+      const relatedDeletedProductsEstimate =
+        pendingProducts.filter(({ doc: product }) =>
+          (product.categoryId && deletedCategorySourceIds.includes(String(product.categoryId))) ||
+          (product.supplierId && deletedSupplierSourceIds.includes(String(product.supplierId)))
+        ).length;
+
       return ok(res, {
         dryRun: true,
         categories: { total: totalCategories, pending: pendingCategories.length, synced: syncedCategories },
@@ -322,6 +377,12 @@ async function syncMigration(req, res, next) {
           const colors = p.variants?.color?.length || 0;
           return sum + sizes + colors;
         }, 0),
+        deletions: {
+          categories: deletions.categories,
+          suppliers: deletions.suppliers,
+          products: deletions.products,
+          relatedProducts: relatedDeletedProductsEstimate,
+        },
       });
     }
 
@@ -392,6 +453,20 @@ async function syncMigration(req, res, next) {
     }
     console.log(`[migration] Products upserted: ${productUpserts}, variants: ${totalVariants}`);
 
+    const deletedRelatedProducts = await deleteProductsByRelatedSourceIds(
+      pool,
+      deletedCategorySourceIds,
+      deletedSupplierSourceIds
+    );
+    const deletedProducts = await deleteBySourceIds(pool, 'Product', deletedProductSourceIds);
+    const deletedSuppliers = await deleteBySourceIds(pool, 'Supplier', deletedSupplierSourceIds);
+    const deletedCategories = await deleteBySourceIds(pool, 'Category', deletedCategorySourceIds);
+
+    deletions.relatedProducts = deletedRelatedProducts;
+    deletions.products = deletedProducts;
+    deletions.suppliers = deletedSuppliers;
+    deletions.categories = deletedCategories;
+
     await pool.query('COMMIT');
     console.log('[migration] Transaction committed successfully.');
 
@@ -401,6 +476,7 @@ async function syncMigration(req, res, next) {
       suppliers: { total: totalSuppliers, upserted: supplierUpserts, synced: syncedSuppliers },
       products: { total: totalProducts, upserted: productUpserts, synced: syncedProducts, skippedMissingRefs: missingRefs.length },
       variants: { upserted: totalVariants },
+      deletions,
     });
   } catch (error) {
     // Only rollback if transaction was actually started
