@@ -517,6 +517,41 @@ Retour:
 - `Product` supprime dans MongoDB -> suppression de la ligne `Product` correspondante en PostgreSQL
 - Si une categorie ou un fournisseur est supprime, tous les produits qui lui sont rattaches sont supprimes aussi en PostgreSQL
 
+## Compatibilite backend principal
+
+Ce backend admin alimente le backend principal GoDjeli. Le contrat cible cote backend principal est le suivant:
+
+### `CatalogRequest`
+
+Utilise pour les liens marketplace qui ne sont pas encore dans le catalogue.
+
+- `POST /api/v1/client/catalog/requests`
+- `GET /api/v1/client/catalog/requests`
+- `PATCH /api/v1/admin/catalog/requests/:requestId`
+
+Statuts:
+- `PENDING`
+- `IN_PROGRESS`
+- `COMPLETED`
+- `REJECTED`
+
+### `Order`
+
+Commande simple, creee seulement pour un achat direct d'un produit deja catalogue.
+
+- `POST /api/v1/client/orders`
+- `GET /api/v1/client/orders`
+- `GET /api/v1/client/orders/:orderId`
+- `POST /api/v1/client/orders/:orderId/payments/callback`
+- `POST /api/v1/client/orders/:orderId/cancel`
+
+Statuts publics:
+- `PENDING_PAYMENT`
+- `PAID`
+- `CANCELLED`
+
+Le backend principal n'expose plus de flux admin de pricing, validation, livraison ou creation de commande pour un user.
+
 ## Pricing
 
 Constantes:
