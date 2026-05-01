@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   buildPricing,
   ORIGINS,
-  MIN_COST_PRICE_EUR,
+  MOQ_THRESHOLD_EUR,
 } = require('../src/services/pricing.service');
 
 test('buildPricing computes the europe robe example', () => {
@@ -37,14 +37,13 @@ test('buildPricing supports china rate', () => {
   assert.equal(pricing.totalPriceEur, 35.49);
 });
 
-test('buildPricing rejects low cost price', () => {
-  assert.throws(
-    () =>
-      buildPricing({
-        costPriceEur: MIN_COST_PRICE_EUR - 0.01,
-        weightGrams: 100,
-        origin: ORIGINS.EUROPE,
-      }),
-    /superieur ou egal/
-  );
+test('buildPricing applies MOQ for low cost products', () => {
+  const pricing = buildPricing({
+    costPriceEur: MOQ_THRESHOLD_EUR - 0.5,
+    weightGrams: 1000,
+    origin: ORIGINS.CHINA,
+  });
+
+  assert.equal(pricing.moq >= 1, true);
+  assert.equal(pricing.customsFeeEur > 0, true);
 });

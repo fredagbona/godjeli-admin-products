@@ -91,6 +91,10 @@ productSchema.virtual('price').get(function getPrice() {
   };
 });
 
+productSchema.virtual('moq').get(function getMoq() {
+  return this.pricing?.moq ?? 1;
+});
+
 productSchema.virtual('costPrice').get(function getCostPrice() {
   const eur = this.pricing?.costPriceEur;
   if (eur == null) return null;
@@ -124,6 +128,24 @@ productSchema.virtual('realCost').get(function getRealCost() {
   const eur = round2(pricing.costPriceEur + pricing.logisticsCostEur + pricing.customsFeeEur);
   return {
     eur,
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+productSchema.virtual('displayedProductPrice').get(function getDisplayedProductPrice() {
+  const eur = this.pricing?.displayProductPriceEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
+});
+
+productSchema.virtual('displayedShippingPrice').get(function getDisplayedShippingPrice() {
+  const eur = this.pricing?.displayShippingAndCustomsEur;
+  if (eur == null) return null;
+  return {
+    eur: round2(eur),
     xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
   };
 });

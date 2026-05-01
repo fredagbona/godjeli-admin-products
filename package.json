@@ -8,6 +8,8 @@
     "dev": "nodemon src/app.js",
     "seed": "node scripts/seed.js",
     "reset-migrated": "node scripts/reset-migrated-at.js",
+    "backfill:product-pricing": "node scripts/backfill-product-pricing.js",
+    "sync:migration": "node scripts/sync-migration.js",
     "migrate:pg:supplier-media": "node scripts/migrate-pg-supplier-media.js",
     "clean-variants": "node scripts/clean-cartesian-variants.js",
     "test": "node --test"
