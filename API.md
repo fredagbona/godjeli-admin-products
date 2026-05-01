@@ -16,6 +16,122 @@ Base URL: `http://localhost:3000`
 { "success": false, "error": { "code": "CODE", "message": "..." } }
 ```
 
+## Pricing
+
+Le pricing produit est calcule cote backend a partir de 4 valeurs metier:
+
+- `costPriceEur` : prix fournisseur
+- `weightGrams` : poids du produit
+- `origin` : `EUROPE` ou `CHINA`
+- une politique de pricing active
+
+### Source de verite
+
+Le calcul se fait dans `src/services/pricing.service.js`.
+
+Les constantes actuelles sont:
+
+- `EUROPE_RATE_EUR_PER_KG = 15.24`
+- `CHINA_RATE_EUR_PER_KG = 13.72`
+- `CUSTOMS_FEE_EUR = 0.5`
+- `TARGET_MARGIN_RATE = 0.2`
+- `PAYMENT_FEE_RATE = 0.029`
+
+### Formule exacte
+
+Le moteur calcule d'abord le cout reel:
+
+```text
+logisticsCostEur = round2((weightGrams / 1000) * ratePerKg)
+customsFeeEur = 0.5
+realCostEur = round2(costPriceEur + logisticsCostEur + customsFeeEur)
+```
+
+Puis il calcule le prix public:
+
+```text
+PRICE_DENOMINATOR = 1 - TARGET_MARGIN_RATE - PAYMENT_FEE_RATE
+totalPriceEur = round2(realCostEur / PRICE_DENOMINATOR)
+marginAmountEur = round2(totalPriceEur * TARGET_MARGIN_RATE)
+paymentFeeEur = round2(totalPriceEur * PAYMENT_FEE_RATE)
+totalRealCostEur = round2(costPriceEur + logisticsCostEur + customsFeeEur + paymentFeeEur)
+netMarginEur = round2(totalPriceEur - totalRealCostEur)
+```
+
+### Prix exposes au catalogue
+
+Le catalogue n'expose pas `pricing` brut. Il expose:
+
+- `price` = prix de vente public calcule depuis `totalPriceEur`
+- `costPrice`
+- `logisticsCost`
+- `customsFee`
+- `realCost`
+
+Tous ces champs sont fournis sous forme:
+
+```json
+{ "eur": 23.5, "xof": 16450 }
+```
+
+La conversion locale utilise un taux fixe d'affichage:
+
+- `EUR_TO_XOF = 700`
+
+### Exemple 1
+
+Entrée:
+
+- `costPriceEur = 10`
+- `weightGrams = 500`
+- `origin = EUROPE`
+
+Calcul:
+
+- `ratePerKgEur = 15.24`
+- `logisticsCostEur = 7.62`
+- `customsFeeEur = 0.5`
+- `realCostEur = 18.12`
+- `totalPriceEur = 23.50`
+- `marginAmountEur = 4.70`
+- `paymentFeeEur = 0.68`
+- `netMarginEur = 4.70`
+
+Prix exposes:
+
+- `price.eur = 23.50`
+- `price.xof = 16450`
+- `costPrice.eur = 10.00`
+- `logisticsCost.eur = 7.62`
+- `customsFee.eur = 0.50`
+- `realCost.eur = 18.12`
+
+### Exemple 2
+
+Entrée:
+
+- `costPriceEur = 18.5`
+- `weightGrams = 1200`
+- `origin = CHINA`
+
+Calcul:
+
+- `ratePerKgEur = 13.72`
+- `logisticsCostEur = 16.46`
+- `customsFeeEur = 0.5`
+- `realCostEur = 35.46`
+- `totalPriceEur = 45.99`
+- `marginAmountEur = 9.20`
+- `paymentFeeEur = 1.33`
+- `netMarginEur = 9.20`
+
+### Lecture metier
+
+- le client voit le prix de vente public, pas le cout fournisseur
+- le cout fournisseur reste interne
+- les frais de livraison et de service ne sont pas encore ajoutes au prix unitaire produit
+- ces frais sont portes au niveau de la commande
+
 ## Health
 
 ### `GET /health`
