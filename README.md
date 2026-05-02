@@ -39,6 +39,7 @@ Le service gere un catalogue 100% manuel:
 2. Le backend retourne les URLs Cloudinary
 3. L'admin cree ou modifie categories et produits via les endpoints admin
 4. Le backend recalcule toujours le pricing produit a partir de `costPriceEur`, `weightGrams` et `origin`
+5. Les reponses publiques exposent le prix en `XOF` uniquement
 
 ## Pricing
 
@@ -47,5 +48,6 @@ Le backend persiste:
 - le split d'affichage produit / livraison
 - l'ajustement de reconciliation si le split theorique ne retombe pas exactement sur le total
 - les couts internes de rentabilite
+- les champs techniques en EUR pour le calcul interne et la sync Mongo -> PostgreSQL
 
 Le detail de la formule est documente dans `API.md`.
