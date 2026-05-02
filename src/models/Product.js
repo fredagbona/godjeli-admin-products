@@ -10,9 +10,13 @@ const FX_RATES = {
   EUR_TO_XOF: 700,
 };
 
-function toXof(value) {
+function toMoney(value) {
   if (value == null) return null;
-  return Math.round(round2(value) * FX_RATES.EUR_TO_XOF);
+  const eur = round2(value);
+  return {
+    eur,
+    xof: Math.round(eur * FX_RATES.EUR_TO_XOF),
+  };
 }
 
 const pricingSchema = new mongoose.Schema(
@@ -89,7 +93,7 @@ const productSchema = new mongoose.Schema(
 productSchema.virtual('price').get(function getPrice() {
   const eur = this.pricing?.totalPriceEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('moq').get(function getMoq() {
@@ -99,38 +103,38 @@ productSchema.virtual('moq').get(function getMoq() {
 productSchema.virtual('costPrice').get(function getCostPrice() {
   const eur = this.pricing?.costPriceEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('logisticsCost').get(function getLogisticsCost() {
   const eur = this.pricing?.logisticsCostEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('customsFee').get(function getCustomsFee() {
   const eur = this.pricing?.customsFeeEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('realCost').get(function getRealCost() {
   const pricing = this.pricing;
   if (!pricing) return null;
   const eur = round2(pricing.costPriceEur + pricing.logisticsCostEur + pricing.customsFeeEur);
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('displayedProductPrice').get(function getDisplayedProductPrice() {
   const eur = this.pricing?.displayProductPriceEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 productSchema.virtual('displayedShippingPrice').get(function getDisplayedShippingPrice() {
   const eur = this.pricing?.displayShippingAndCustomsEur;
   if (eur == null) return null;
-  return toXof(eur);
+  return toMoney(eur);
 });
 
 // Only expose totalPriceEur in API responses, hide internal pricing details
