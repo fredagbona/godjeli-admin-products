@@ -643,6 +643,8 @@ Utilise pour les liens marketplace qui ne sont pas encore dans le catalogue.
 
 - `POST /api/v1/client/catalog/requests`
 - `GET /api/v1/client/catalog/requests`
+- `GET /api/v1/admin/catalog/requests`
+- `GET /api/v1/admin/catalog/requests/:requestId`
 - `PATCH /api/v1/admin/catalog/requests/:requestId`
 
 Statuts:
