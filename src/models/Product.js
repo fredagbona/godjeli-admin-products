@@ -82,6 +82,8 @@ const productSchema = new mongoose.Schema(
       },
       default: {},
     },
+    isPromoted: { type: Boolean, default: false, index: true },
+    promotionDiscountRate: { type: Number, default: 0, min: 0, max: 1 },
     pricing: { type: pricingSchema, required: true },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },
@@ -135,6 +137,16 @@ productSchema.virtual('displayedShippingPrice').get(function getDisplayedShippin
   const eur = this.pricing?.displayShippingAndCustomsEur;
   if (eur == null) return null;
   return toMoney(eur);
+});
+
+productSchema.virtual('promotionalPrice').get(function getPromotionalPrice() {
+  if (!this.isPromoted) return null;
+  const rate = Number(this.promotionDiscountRate || 0);
+  if (rate <= 0) return null;
+  const base = this.price?.eur ?? this.pricing?.totalPriceEur;
+  if (base == null) return null;
+  const discounted = round2(base * (1 - rate));
+  return toMoney(discounted);
 });
 
 // Only expose totalPriceEur in API responses, hide internal pricing details

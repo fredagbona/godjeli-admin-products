@@ -430,6 +430,8 @@ Retour: produit unique avec `categoryId` et `supplierId` peuples, `price` (alias
     "size": ["S", "M", "L", "XL"],
     "color": ["Rouge", "Bleu", "Blanc"]
   },
+  "isPromoted": true,
+  "promotionDiscountRate": 0.15,
   "costPriceEur": 10,
   "weightGrams": 200,
   "origin": "EUROPE",
@@ -444,6 +446,8 @@ Retour: produit unique avec `categoryId` et `supplierId` peuples, `price` (alias
 - `socialProof` est optionnel (default: `{ stars: 0, reviews: 0, salesCount: 0 }`)
 - `variants` est optionnel (default: `{ size: [], color: [] }`)
 - `origin` doit etre `"EUROPE"` ou `"CHINA"` (majuscules obligatoires)
+- `isPromoted` active ou non la promo sur le produit
+- `promotionDiscountRate` est un taux decimal entre `0` et `1` (ex: `0.15` = 15%)
 - `costPriceEur` doit etre `>= 5`
 - `images` doit contenir au moins 1 URL
 - `categoryId` doit pointer vers une categorie existante et active
@@ -509,6 +513,8 @@ Exemple de retour:
     "size": ["S", "M", "L"],
     "color": ["Rouge", "Bleu"]
   },
+  "isPromoted": true,
+  "promotionDiscountRate": 0.15,
   "pricing": {
     "costPriceEur": 10,
     "weightGrams": 200,
@@ -533,12 +539,21 @@ Exemple de retour:
   "slug": "robe-ete-fleurie",
   "__v": 0,
   "price": 17.57,
+  "promotionalPrice": {
+    "eur": 14.93,
+    "xof": 10451
+  },
+  "isPromoted": true,
+  "promotionDiscountRate": 0.15,
   "id": "69d29589efa817804bb8b840"
 }
 ```
 
 **Champs notables:**
 - `price` — alias virtuel de `totalPriceEur` (prix total affiche au client)
+- `promotionalPrice` — prix promo calcule quand `isPromoted=true`
+- `isPromoted` — boolean indiquant si une promotion est active
+- `promotionDiscountRate` — taux decimal de reduction
 - `id` — alias de `_id` (string)
 - `categoryId` — objet categorie complet peuple automatiquement
 - `supplierId` — objet fournisseur complet peuple automatiquement

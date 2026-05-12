@@ -24,6 +24,8 @@ const productSchema = z.object({
     size: z.array(z.string()).optional().default([]),
     color: z.array(z.string()).optional().default([]),
   }).optional().default({}),
+  isPromoted: z.boolean().optional().default(false),
+  promotionDiscountRate: z.number().min(0).max(1).optional().default(0),
   costPriceEur: z.number().min(0),
   weightGrams: z.number().min(0),
   origin: z.nativeEnum(ORIGINS),
@@ -80,6 +82,8 @@ function buildProductPayload(data) {
     productUrl: data.productUrl,
     socialProof: data.socialProof,
     variants: data.variants,
+    isPromoted: data.isPromoted ?? false,
+    promotionDiscountRate: data.promotionDiscountRate ?? 0,
     isActive: data.isActive ?? true,
     pricing: buildPricing({
       costPriceEur: data.costPriceEur,
@@ -178,6 +182,8 @@ async function updateProduct(req, res, next) {
     if (data.productUrl !== undefined) product.productUrl = data.productUrl;
     if (data.socialProof !== undefined) product.socialProof = data.socialProof;
     if (data.variants !== undefined) product.variants = data.variants;
+    if (data.isPromoted !== undefined) product.isPromoted = data.isPromoted;
+    if (data.promotionDiscountRate !== undefined) product.promotionDiscountRate = data.promotionDiscountRate;
     if (data.isActive !== undefined) product.isActive = data.isActive;
 
     product.pricing = buildPricing(pricingInput);
