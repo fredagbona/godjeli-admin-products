@@ -47,6 +47,8 @@ const SAMPLE_PRODUCT = {
     size: ['S', 'M', 'L', 'XL'],
     color: ['Rouge', 'Bleu', 'Blanc'],
   },
+  isPromoted: false,
+  promotionDiscountRate: 0,
   costPriceEur: 10,
   weightGrams: 200,
   origin: ORIGINS.EUROPE,
@@ -81,6 +83,8 @@ async function seed() {
     productUrl: SAMPLE_PRODUCT.productUrl,
     socialProof: SAMPLE_PRODUCT.socialProof,
     variants: SAMPLE_PRODUCT.variants,
+    isPromoted: SAMPLE_PRODUCT.isPromoted,
+    promotionDiscountRate: SAMPLE_PRODUCT.promotionDiscountRate,
     pricing: buildPricing({
       costPriceEur: SAMPLE_PRODUCT.costPriceEur,
       weightGrams: SAMPLE_PRODUCT.weightGrams,
