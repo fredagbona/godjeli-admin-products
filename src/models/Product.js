@@ -102,6 +102,14 @@ productSchema.virtual('moq').get(function getMoq() {
   return this.pricing?.moq ?? 1;
 });
 
+productSchema.virtual('weightGrams').get(function getWeightGrams() {
+  return this.pricing?.weightGrams ?? null;
+});
+
+productSchema.virtual('origin').get(function getOrigin() {
+  return this.pricing?.origin ?? null;
+});
+
 productSchema.virtual('costPrice').get(function getCostPrice() {
   const eur = this.pricing?.costPriceEur;
   if (eur == null) return null;

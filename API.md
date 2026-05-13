@@ -400,13 +400,13 @@ Query:
 - `categoryId`
 - `isActive=true|false`
 
-Retour: liste de produits avec `categoryId` et `supplierId` peuples (objets complets).
+Retour: liste de produits avec `categoryId` et `supplierId` peuples (objets complets), ainsi que `origin` et `weightGrams` au niveau racine du produit.
 
 ### `GET /api/admin/products/:id`
 
 Accepte un ObjectId Mongo ou un slug produit.
 
-Retour: produit unique avec `categoryId` et `supplierId` peuples, `price` (alias de `totalPriceEur`).
+Retour: produit unique avec `categoryId` et `supplierId` peuples, `origin`, `weightGrams` et `price` (alias de `totalPriceEur`).
 
 ### `POST /api/admin/products`
 
@@ -557,6 +557,8 @@ Exemple de retour:
 - `id` — alias de `_id` (string)
 - `categoryId` — objet categorie complet peuple automatiquement
 - `supplierId` — objet fournisseur complet peuple automatiquement
+- `origin` — origine logistique du produit (`EUROPE` ou `CHINA`)
+- `weightGrams` — poids du produit en grammes
 - `productStock` — stock actuel chez le fournisseur
 - `productUrl` — URL du produit chez le fournisseur
 - `socialProof` — `{ stars, reviews, salesCount }`
