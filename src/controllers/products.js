@@ -157,7 +157,7 @@ async function updateProduct(req, res, next) {
   try {
     const id = objectId.parse(req.params.id);
     if ('sku' in req.body) return badRequest(res, 'Le SKU ne peut pas être modifié.');
-    const patch = productFields.partial().strict().parse(req.body);
+    const patch = productFields.partial().extend({ mainImage: imageSchema.partial().optional() }).strict().parse(req.body);
     const product = await Product.findOne({ _id: id, deletedAt: null });
     if (!product) return notFound(res, 'Produit introuvable.');
     const current = {};
@@ -167,6 +167,7 @@ async function updateProduct(req, res, next) {
     current.status = current.status || (product.isActive ? 'PUBLISHED' : 'ARCHIVED');
     if (!current.mainImage && product.images?.length) current.mainImage = { url: product.images[0] };
     if (!current.gallery && product.images?.length > 1) current.gallery = product.images.slice(1);
+    if (patch.mainImage) patch.mainImage = { ...(current.mainImage || {}), ...patch.mainImage };
     const data = validateProduct({ ...current, ...patch });
     await validateRelations(data);
     Object.assign(product, mappedFields(data));
