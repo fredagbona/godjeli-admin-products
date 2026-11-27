@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const { ORIGINS } = require('../services/pricing.service');
 const { slugify } = require('../utils/slugify');
 
@@ -43,30 +44,38 @@ const pricingSchema = new mongoose.Schema(
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    sku: { type: String, unique: true, sparse: true, immutable: true, index: true },
+    status: { type: String, enum: ['DRAFT', 'PUBLISHED', 'ARCHIVED'] },
+    salePriceXof: { type: Number, min: 1 },
+    costPriceXof: { type: Number, min: 1 },
+    stock: { type: Number, min: 0 },
+    mainImage: { url: String, alt: String },
+    gallery: { type: [String], default: undefined },
+    variantOptions: { type: [mongoose.Schema.Types.Mixed], default: undefined },
     slug: { type: String, unique: true, index: true },
-    description: { type: String, required: true, trim: true },
+    description: { type: String, trim: true },
     images: {
       type: [{ type: String }],
       validate: {
         validator: (images) => Array.isArray(images) && images.length > 0,
         message: 'Au moins une image est requise.',
       },
-      required: true,
+      required: false,
     },
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
-      required: true,
+      required: false,
       index: true,
     },
     supplierId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Supplier',
-      required: true,
+      required: false,
       index: true,
     },
     productStock: { type: Number, required: true, min: 0, default: 0 },
-    productUrl: { type: String, required: true },
+    productUrl: { type: String, default: '' },
     socialProof: {
       type: {
         stars: { type: Number, default: 0, min: 0, max: 5 },
@@ -84,7 +93,7 @@ const productSchema = new mongoose.Schema(
     },
     isPromoted: { type: Boolean, default: false, index: true },
     promotionDiscountRate: { type: Number, default: 0, min: 0, max: 1 },
-    pricing: { type: pricingSchema, required: true },
+    pricing: { type: pricingSchema, required: false },
     isActive: { type: Boolean, default: true, index: true },
     deletedAt: { type: Date, default: null, index: true },
     migratedAt: { type: Date, default: null },
@@ -94,12 +103,21 @@ const productSchema = new mongoose.Schema(
 
 productSchema.virtual('price').get(function getPrice() {
   const eur = this.pricing?.totalPriceEur;
+  if (this.salePriceXof != null) return { eur: null, xof: this.salePriceXof };
   if (eur == null) return null;
   return toMoney(eur);
 });
 
+productSchema.virtual('marginXof').get(function getMarginXof() {
+  return this.salePriceXof == null || this.costPriceXof == null ? undefined : this.salePriceXof - this.costPriceXof;
+});
+
+productSchema.virtual('imageAlt').get(function getImageAlt() {
+  return this.mainImage?.alt || undefined;
+});
+
 productSchema.virtual('moq').get(function getMoq() {
-  return this.pricing?.moq ?? 1;
+  return this.salePriceXof != null ? 1 : (this.pricing?.moq ?? 1);
 });
 
 productSchema.virtual('weightGrams').get(function getWeightGrams() {
@@ -148,7 +166,7 @@ productSchema.virtual('displayedShippingPrice').get(function getDisplayedShippin
 });
 
 productSchema.virtual('promotionalPrice').get(function getPromotionalPrice() {
-  if (!this.isPromoted) return null;
+  if (this.salePriceXof != null || !this.isPromoted) return null;
   const rate = Number(this.promotionDiscountRate || 0);
   if (rate <= 0) return null;
   const base = this.price?.eur ?? this.pricing?.totalPriceEur;
@@ -175,6 +193,8 @@ productSchema.set('toObject', {
 });
 
 productSchema.pre('save', async function preSave() {
+  if (!this.sku) this.sku = `GDJ-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+  if (this.status) this.isActive = this.status === 'PUBLISHED';
   if (!this.isModified('name') && this.slug) return;
 
   const base = slugify(this.name);
