@@ -101,7 +101,15 @@ function parseBoolean(value) {
 }
 function handleError(res, next, error) {
   if (error.status === 404) return notFound(res, error.message);
-  if (error.status === 400 || error.name === 'ZodError') return badRequest(res, error.message);
+  if (error.name === 'ZodError') {
+    const issue = error.issues?.[0];
+    const field = issue?.path?.join('.') || 'produit';
+    const message = issue?.code === 'unrecognized_keys'
+      ? `Le payload contient un champ non autorisé : ${issue.keys?.join(', ') || field}.`
+      : `Le champ ${field} est invalide : ${issue?.message || 'vérifie sa valeur'}.`;
+    return badRequest(res, message);
+  }
+  if (error.status === 400) return badRequest(res, error.message);
   if (error.code === 11000) return fail(res, 409, 'CONFLICT', 'La référence ou le slug existe déjà.');
   next(error);
 }
