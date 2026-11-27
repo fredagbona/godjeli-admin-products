@@ -2,221 +2,190 @@ const { z } = require('zod');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Supplier = require('../models/Supplier');
-const { buildPricing, ORIGINS } = require('../services/pricing.service');
 const { ok, created, notFound, badRequest, fail } = require('../middlewares/respond');
 
-const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
+const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Identifiant invalide.');
+const nonempty = (label, max = 2000) => z.string().trim().min(1, `Le champ ${label} est obligatoire.`).max(max, `Le champ ${label} ne doit pas dépasser ${max} caractères.`);
+const imageUrl = z.string().url('Une URL d’image est invalide.');
+const imageSchema = z.object({
+  url: imageUrl,
+  alt: z.string().trim().max(125, 'Le texte alternatif est limité à 125 caractères.').optional()
+}).strict();
+const valueSchema = z.object({
+  value: nonempty('valeur'),
+  hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'La couleur doit être au format #RRGGBB.').optional(),
+  images: z.array(imageUrl).optional()
+}).strict();
+const optionSchema = z.object({
+  name: nonempty('nom de variante', 120),
+  type: z.enum(['COLOR', 'TEXT']),
+  values: z.array(valueSchema).min(1, 'Chaque variante doit avoir au moins une valeur.')
+}).strict();
+const productFields = z.object({
+  name: nonempty('nom', 120),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED'], { errorMap: () => ({ message: 'Le statut doit être DRAFT, PUBLISHED ou ARCHIVED.' }) }),
+  categoryId: objectId.optional(),
+  supplierId: objectId.optional(),
+  description: nonempty('description', 2000).optional(),
+  mainImage: imageSchema.optional(),
+  gallery: z.array(imageUrl).optional(),
+  variantOptions: z.array(optionSchema).max(3, 'Trois options de variantes maximum.').optional(),
+  salePriceXof: z.number().int().positive('Le prix de vente doit être supérieur à 0.').optional(),
+  costPriceXof: z.number().int().positive('Le coût d’achat doit être supérieur à 0.').optional(),
+  stock: z.number().int().min(0, 'Le stock ne peut pas être négatif.').optional()
+}).strict();
 
-const productSchema = z.object({
-  name: z.string().trim().min(1),
-  description: z.string().trim().min(1),
-  categoryId: objectIdSchema,
-  supplierId: objectIdSchema,
-  images: z.array(z.string().url()).min(1),
-  productStock: z.number().int().min(0),
-  productUrl: z.string().url(),
-  socialProof: z.object({
-    stars: z.number().min(0).max(5).optional().default(0),
-    reviews: z.number().int().min(0).optional().default(0),
-    salesCount: z.number().int().min(0).optional().default(0),
-  }).optional().default({}),
-  variants: z.object({
-    size: z.array(z.string()).optional().default([]),
-    color: z.array(z.string()).optional().default([]),
-  }).optional().default({}),
-  isPromoted: z.boolean().optional().default(false),
-  promotionDiscountRate: z.number().min(0).max(1).optional().default(0),
-  costPriceEur: z.number().min(0),
-  weightGrams: z.number().min(0),
-  origin: z.nativeEnum(ORIGINS),
-  isActive: z.boolean().optional(),
-});
+function validateProduct(data) {
+  const result = productFields.safeParse(data);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const error = new Error(issue.message || 'Les données du produit sont invalides.');
+    error.status = 400;
+    throw error;
+  }
+  const product = result.data;
+  if (product.status !== 'DRAFT') {
+    for (const key of ['categoryId', 'supplierId', 'description', 'mainImage', 'salePriceXof', 'costPriceXof', 'stock']) {
+      if (product[key] === undefined) {
+        const error = new Error(`Le champ ${key} est obligatoire pour publier ou archiver un produit.`);
+        error.status = 400;
+        throw error;
+      }
+    }
+    if (!product.gallery?.length) {
+      const error = new Error('La galerie doit contenir au moins une image.');
+      error.status = 400;
+      throw error;
+    }
+  }
+  const allImages = [product.mainImage?.url, ...(product.gallery || [])].filter(Boolean);
+  if (allImages.length > 10) {
+    const error = new Error('Dix images maximum au total.');
+    error.status = 400;
+    throw error;
+  }
+  const optionNames = new Set();
+  for (const option of product.variantOptions || []) {
+    const name = option.name.toLocaleLowerCase('fr');
+    if (optionNames.has(name)) throw Object.assign(new Error('Les noms des variantes doivent être uniques.'), { status: 400 });
+    optionNames.add(name);
+    const values = new Set();
+    for (const value of option.values) {
+      const key = value.value.toLocaleLowerCase('fr');
+      if (values.has(key)) throw Object.assign(new Error(`La variante ${option.name} contient une valeur en double.`), { status: 400 });
+      values.add(key);
+      if (option.type === 'TEXT' && (value.hex !== undefined || value.images !== undefined)) {
+        throw Object.assign(new Error('Les pastilles et images sont réservées aux variantes COLOR.'), { status: 400 });
+      }
+      for (const url of value.images || []) {
+        if (!allImages.includes(url)) throw Object.assign(new Error('Les images des couleurs doivent appartenir aux images du produit.'), { status: 400 });
+      }
+    }
+  }
+  return product;
+}
+
+async function validateRelations(data) {
+  if (data.categoryId && !(await Category.exists({ _id: data.categoryId, isActive: true, deletedAt: null }))) {
+    throw Object.assign(new Error('La catégorie est introuvable ou inactive.'), { status: 404 });
+  }
+  if (data.supplierId && !(await Supplier.exists({ _id: data.supplierId, isActive: true, deletedAt: null }))) {
+    throw Object.assign(new Error('La boutique est introuvable ou inactive.'), { status: 404 });
+  }
+}
 
 function parseBoolean(value) {
-  if (value === undefined) return undefined;
   if (value === 'true') return true;
   if (value === 'false') return false;
   return undefined;
 }
-
-async function ensureActiveCategory(categoryId) {
-  const category = await Category.findOne({
-    _id: categoryId,
-    deletedAt: null,
-    isActive: true,
-  });
-
-  if (!category) {
-    const error = new Error('La categorie est introuvable ou inactive.');
-    error.status = 400;
-    throw error;
+function handleError(res, next, error) {
+  if (error.status === 404) return notFound(res, error.message);
+  if (error.name === 'ZodError') {
+    const issue = error.issues?.[0];
+    const field = issue?.path?.join('.') || 'produit';
+    const message = issue?.code === 'unrecognized_keys'
+      ? `Le payload contient un champ non autorisé : ${issue.keys?.join(', ') || field}.`
+      : `Le champ ${field} est invalide : ${issue?.message || 'vérifie sa valeur'}.`;
+    return badRequest(res, message);
   }
-
-  return category;
+  if (error.status === 400) return badRequest(res, error.message);
+  if (error.code === 11000) return fail(res, 409, 'CONFLICT', 'La référence ou le slug existe déjà.');
+  next(error);
 }
-
-async function ensureActiveSupplier(supplierId) {
-  const supplier = await Supplier.findOne({
-    _id: supplierId,
-    deletedAt: null,
-    isActive: true,
-  });
-
-  if (!supplier) {
-    const error = new Error('Le fournisseur est introuvable ou inactif.');
-    error.status = 400;
-    throw error;
-  }
-
-  return supplier;
-}
-
-function buildProductPayload(data) {
+function mappedFields(data) {
   return {
-    name: data.name,
-    description: data.description,
-    categoryId: data.categoryId,
-    supplierId: data.supplierId,
-    images: data.images,
-    productStock: data.productStock,
-    productUrl: data.productUrl,
-    socialProof: data.socialProof,
-    variants: data.variants,
-    isPromoted: data.isPromoted ?? false,
-    promotionDiscountRate: data.promotionDiscountRate ?? 0,
-    isActive: data.isActive ?? true,
-    pricing: buildPricing({
-      costPriceEur: data.costPriceEur,
-      weightGrams: data.weightGrams,
-      origin: data.origin,
-    }),
+    ...data,
+    images: [data.mainImage?.url, ...(data.gallery || [])].filter(Boolean),
+    productStock: data.stock ?? 0,
+    isActive: data.status === 'PUBLISHED'
   };
 }
-
 async function listProducts(req, res, next) {
   try {
     const filter = { deletedAt: null };
-    const isActive = parseBoolean(req.query.isActive);
-
-    if (isActive !== undefined) filter.isActive = isActive;
-    if (req.query.categoryId) filter.categoryId = objectIdSchema.parse(req.query.categoryId);
+    const active = parseBoolean(req.query.isActive);
+    if (active !== undefined) filter.isActive = active;
+    if (req.query.status) {
+      if (!['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(req.query.status)) return badRequest(res, 'Statut invalide.');
+      filter.status = req.query.status;
+    }
+    if (req.query.categoryId) filter.categoryId = objectId.parse(req.query.categoryId);
     if (req.query.search) filter.$text = { $search: req.query.search };
-
-    const products = await Product.find(filter)
-      .populate('categoryId')
-      .populate('supplierId')
-      .sort({ createdAt: -1 });
-
-    return ok(res, products);
-  } catch (error) {
-    if (error.name === 'ZodError') return badRequest(res, 'Validation failed', error.errors);
-    next(error);
-  }
+    return ok(res, await Product.find(filter).populate('categoryId').populate('supplierId').sort({ createdAt: -1 }));
+  } catch (e) { handleError(res, next, e); }
 }
-
 async function getProduct(req, res, next) {
   try {
-    const selector = req.params.id.match(/^[a-f\d]{24}$/i)
-      ? { _id: req.params.id }
-      : { slug: req.params.id };
-
-    const product = await Product.findOne({
-      ...selector,
-      deletedAt: null,
-    })
-      .populate('categoryId')
-      .populate('supplierId');
-
-    if (!product) return notFound(res, 'Product not found');
+    const selector = /^[a-f\d]{24}$/i.test(req.params.id) ? { _id: req.params.id } : { slug: req.params.id };
+    const product = await Product.findOne({ ...selector, deletedAt: null }).populate('categoryId').populate('supplierId');
+    if (!product) return notFound(res, 'Produit introuvable.');
     return ok(res, product);
-  } catch (error) {
-    next(error);
-  }
+  } catch (e) { handleError(res, next, e); }
 }
-
 async function createProduct(req, res, next) {
   try {
-    const data = productSchema.parse(req.body);
-    await ensureActiveCategory(data.categoryId);
-    await ensureActiveSupplier(data.supplierId);
-
-    const product = await Product.create(buildProductPayload(data));
+    const data = validateProduct(req.body);
+    await validateRelations(data);
+    const product = await Product.create(mappedFields(data));
     await product.populate('categoryId');
     await product.populate('supplierId');
-
     return created(res, product);
-  } catch (error) {
-    if (error.name === 'ZodError') return badRequest(res, 'Validation failed', error.errors);
-    if (error.code === 11000) return fail(res, 409, 'CONFLICT', 'Un produit avec ce slug existe deja.');
-    if (error.status) return fail(res, error.status, 'REQUEST_ERROR', error.message);
-    next(error);
-  }
+  } catch (e) { handleError(res, next, e); }
 }
-
 async function updateProduct(req, res, next) {
   try {
-    const id = objectIdSchema.parse(req.params.id);
-    const data = productSchema.partial().parse(req.body);
-
+    const id = objectId.parse(req.params.id);
+    if ('sku' in req.body) return badRequest(res, 'Le SKU ne peut pas être modifié.');
+    const patch = productFields.partial().extend({ mainImage: imageSchema.partial().optional() }).strict().parse(req.body);
     const product = await Product.findOne({ _id: id, deletedAt: null });
-    if (!product) return notFound(res, 'Product not found');
-
-    const nextCategoryId = data.categoryId || String(product.categoryId);
-    await ensureActiveCategory(nextCategoryId);
-
-    const nextSupplierId = data.supplierId || String(product.supplierId);
-    await ensureActiveSupplier(nextSupplierId);
-
-    const pricingInput = {
-      costPriceEur: data.costPriceEur ?? product.pricing.costPriceEur,
-      weightGrams: data.weightGrams ?? product.pricing.weightGrams,
-      origin: data.origin ?? product.pricing.origin,
-    };
-
-    if (data.name !== undefined) product.name = data.name;
-    if (data.description !== undefined) product.description = data.description;
-    if (data.images !== undefined) product.images = data.images;
-    if (data.categoryId !== undefined) product.categoryId = data.categoryId;
-    if (data.supplierId !== undefined) product.supplierId = data.supplierId;
-    if (data.productStock !== undefined) product.productStock = data.productStock;
-    if (data.productUrl !== undefined) product.productUrl = data.productUrl;
-    if (data.socialProof !== undefined) product.socialProof = data.socialProof;
-    if (data.variants !== undefined) product.variants = data.variants;
-    if (data.isPromoted !== undefined) product.isPromoted = data.isPromoted;
-    if (data.promotionDiscountRate !== undefined) product.promotionDiscountRate = data.promotionDiscountRate;
-    if (data.isActive !== undefined) product.isActive = data.isActive;
-
-    product.pricing = buildPricing(pricingInput);
-
+    if (!product) return notFound(res, 'Produit introuvable.');
+    const current = {};
+    for (const key of Object.keys(productFields.shape)) {
+      if (product[key] !== undefined && product[key] !== null) current[key] = ['categoryId', 'supplierId'].includes(key) ? String(product[key]) : (typeof product[key]?.toObject === 'function' ? product[key].toObject() : product[key]);
+    }
+    current.status = current.status || (product.isActive ? 'PUBLISHED' : 'ARCHIVED');
+    if (!current.mainImage && product.images?.length) current.mainImage = { url: product.images[0] };
+    if (!current.gallery && product.images?.length > 1) current.gallery = product.images.slice(1);
+    if (patch.mainImage) patch.mainImage = { ...(current.mainImage || {}), ...patch.mainImage };
+    const data = validateProduct({ ...current, ...patch });
+    await validateRelations(data);
+    Object.assign(product, mappedFields(data));
     await product.save();
     await product.populate('categoryId');
     await product.populate('supplierId');
-
     return ok(res, product);
-  } catch (error) {
-    if (error.name === 'ZodError') return badRequest(res, 'Validation failed', error.errors);
-    if (error.code === 11000) return fail(res, 409, 'CONFLICT', 'Un produit avec ce slug existe deja.');
-    if (error.status) return fail(res, error.status, 'REQUEST_ERROR', error.message);
-    next(error);
-  }
+  } catch (e) { handleError(res, next, e); }
 }
-
 async function deleteProduct(req, res, next) {
   try {
-    const id = objectIdSchema.parse(req.params.id);
+    const id = objectId.parse(req.params.id);
     const product = await Product.findOne({ _id: id, deletedAt: null });
-
-    if (!product) return notFound(res, 'Product not found');
-
+    if (!product) return notFound(res, 'Produit introuvable.');
     product.isActive = false;
     product.deletedAt = new Date();
     await product.save();
-
     return ok(res, { id: product._id });
-  } catch (error) {
-    if (error.name === 'ZodError') return badRequest(res, 'Validation failed', error.errors);
-    next(error);
-  }
+  } catch (e) { handleError(res, next, e); }
 }
-
-module.exports = { listProducts, getProduct, createProduct, updateProduct, deleteProduct };
+module.exports = { listProducts, getProduct, createProduct, updateProduct, deleteProduct, validateProduct };
