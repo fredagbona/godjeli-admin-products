@@ -154,7 +154,7 @@ async function updateProduct(req, res, next) {
     if (!product) return notFound(res, 'Produit introuvable.');
     const current = {};
     for (const key of Object.keys(productFields.shape)) {
-      if (product[key] !== undefined && product[key] !== null) current[key] = product[key];
+      if (product[key] !== undefined && product[key] !== null) current[key] = ['categoryId', 'supplierId'].includes(key) ? String(product[key]) : (typeof product[key]?.toObject === 'function' ? product[key].toObject() : product[key]);
     }
     current.status = current.status || (product.isActive ? 'PUBLISHED' : 'ARCHIVED');
     if (!current.mainImage && product.images?.length) current.mainImage = { url: product.images[0] };
@@ -173,8 +173,8 @@ async function deleteProduct(req, res, next) {
     const id = objectId.parse(req.params.id);
     const product = await Product.findOne({ _id: id, deletedAt: null });
     if (!product) return notFound(res, 'Produit introuvable.');
-    product.status = 'ARCHIVED';
     product.isActive = false;
+    product.deletedAt = new Date();
     await product.save();
     return ok(res, { id: product._id });
   } catch (e) { handleError(res, next, e); }
