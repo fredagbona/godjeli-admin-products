@@ -57,7 +57,7 @@ const productSchema = new mongoose.Schema(
     images: {
       type: [{ type: String }],
       validate: {
-        validator: (images) => Array.isArray(images) && images.length > 0,
+        validator: (images) => !images || Array.isArray(images),
         message: 'Au moins une image est requise.',
       },
       required: false,
@@ -74,7 +74,7 @@ const productSchema = new mongoose.Schema(
       required: false,
       index: true,
     },
-    productStock: { type: Number, required: true, min: 0, default: 0 },
+    productStock: { type: Number, min: 0, default: 0 },
     productUrl: { type: String, default: '' },
     socialProof: {
       type: {
@@ -94,7 +94,7 @@ const productSchema = new mongoose.Schema(
     isPromoted: { type: Boolean, default: false, index: true },
     promotionDiscountRate: { type: Number, default: 0, min: 0, max: 1 },
     pricing: { type: pricingSchema, required: false },
-    isActive: { type: Boolean, default: true, index: true },
+    isActive: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null, index: true },
     migratedAt: { type: Date, default: null },
   },
